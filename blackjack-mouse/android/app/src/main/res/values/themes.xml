@@ -1,0 +1,7 @@
+<resources>
+    <style name="Theme.BlackjackMouse" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">#063D1E</item>
+        <item name="android:statusBarColor">#063D1E</item>
+        <item name="android:navigationBarColor">#063D1E</item>
+    </style>
+</resources>
