@@ -14,8 +14,18 @@ import argparse
 import hmac
 import random
 import socket
+import sys
 import threading
 from urllib.parse import unquote_plus
+
+if sys.platform == "win32":
+    # Sans ça, la souris dérive quand l'échelle d'affichage Windows est > 100 %
+    import ctypes
+
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)
+    except Exception:
+        pass
 
 from pynput.keyboard import Controller as Keyboard
 from pynput.keyboard import Key

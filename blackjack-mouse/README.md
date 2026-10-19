@@ -8,19 +8,22 @@ blackjack-mouse/
 └── android/   → projet Android Studio (l'appli du téléphone)
 ```
 
-## 1. Sur le PC : lancer le serveur
+## 1. Sur le PC (Windows) : lancer le serveur
 
-```bash
-cd blackjack-mouse/server
+1. Installe [Python](https://www.python.org/downloads/) si besoin (coche **« Add python.exe to PATH »**).
+2. Ouvre PowerShell dans le dossier `blackjack-mouse\server` et lance :
+
+```powershell
 pip install -r requirements.txt
 python blackjack_mouse_server.py
 ```
 
 Il affiche **l'IP du PC**, le **port** (5555) et un **PIN** à 4 chiffres (change à chaque lancement ; `--pin 1234` pour en fixer un).
 
-- Windows : si le pare-feu demande l'autorisation, accepte (réseau privé).
-- macOS : autorise le Terminal dans *Réglages → Confidentialité → Accessibilité*.
-- Linux : fonctionne sous X11 (pas sous Wayland).
+- À la première exécution, Windows demande l'autorisation du pare-feu : coche **Réseaux privés** puis *Autoriser*.
+- Le PC et le téléphone doivent être sur le **même Wi-Fi**. Si ton IP n'est pas la bonne, vérifie avec `ipconfig` (« Adresse IPv4 »).
+- La touche **Win** de l'appli ouvre le menu Démarrer ; les fenêtres lancées en administrateur ne reçoivent pas les clics/touches sauf si tu lances aussi le serveur en administrateur.
+- (macOS : autorise le Terminal dans Accessibilité. Linux : X11 uniquement.)
 
 ## 2. Sur le téléphone : installer l'appli avec Android Studio
 
