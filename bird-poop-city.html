@@ -1,30 +1,23 @@
 <!doctype html>
-<html lang="fr">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Bird Poop City</title>
 <style>
-  html,body{margin:0;height:100%;overflow:hidden;background:#b9a4f5;font-family:Arial Black,Arial,sans-serif;user-select:none}
-  canvas{display:block;cursor:crosshair}
-  #hud{position:fixed;left:10px;top:8px;font-size:18px;line-height:1.3;color:#ffe94d;text-shadow:1px 1px 0 #000,-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000;pointer-events:none}
-  #hud .m{color:#5dff5d}
-  #hud .c{color:#fff;font-size:14px}
-  #restart{position:fixed;left:10px;bottom:8px;font-size:12px;color:#fff;background:rgba(0,0,0,.45);border:0;padding:5px 9px;border-radius:5px;cursor:pointer}
-  #msg{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;text-align:center;text-shadow:2px 2px 0 #000;background:rgba(80,40,140,.55);cursor:pointer}
-  #msg h1{font-size:48px;margin:0 0 12px}
-  #msg p{font-size:18px;margin:4px}
-  .pop{position:fixed;pointer-events:none;font-size:22px;color:#ffe94d;text-shadow:1px 1px 0 #000,-1px -1px 0 #000;animation:up 1s forwards}
-  @keyframes up{to{transform:translateY(-60px);opacity:0}}
+  html,body{margin:0;height:100%;overflow:hidden;background:#d9c4ff;color-scheme:light;font-family:Arial,Helvetica,sans-serif;user-select:none;-webkit-user-select:none}
+  canvas{display:block;cursor:pointer}
+  #hud{position:fixed;left:6px;top:4px;font:bold 12px/1.25 "Courier New",monospace;pointer-events:none;text-shadow:1px 1px 0 #1b3d1b,-1px 0 0 #1b3d1b}
+  #hud .s{color:#f4ff3a}
+  #hud .m{color:#38ff5a}
+  #restart{position:fixed;left:6px;bottom:4px;font:bold 10px "Courier New",monospace;color:#fff;background:none;border:0;padding:2px;cursor:pointer;text-shadow:1px 1px 0 #000}
+  #hint{position:fixed;left:0;right:0;bottom:14%;text-align:center;font:bold 20px Arial,sans-serif;color:#fff;text-shadow:2px 2px 0 #000,-1px -1px 0 #000;pointer-events:none;padding:0 16px}
+  #end{position:fixed;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;color:#fff;text-shadow:2px 2px 0 #000;background:rgba(120,60,170,.35);font:bold 34px Arial,sans-serif;text-align:center;cursor:pointer}
+  #end small{font-size:16px;margin-top:8px}
+  .pop{position:fixed;pointer-events:none;font:bold 13px Arial,sans-serif;color:#ffe94d;text-shadow:1px 1px 0 #000,-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000;white-space:nowrap;transform:translate(-50%,-50%)}
 </style>
-</head>
-<body>
-<div id="hud">Score: <span id="score">0</span><br><span class="m">Money: <span id="money">0</span> $</span><br><span class="c">Poop: <span id="ammo">∞</span> · Combo x<span id="combo">1</span></span></div>
-<button id="restart">Restart level</button>
-<div id="msg"><h1>💩 BIRD POOP CITY 🐦</h1>
-<p>Souris = voler / viser · Clic ou Espace = lâcher une crotte</p>
-<p>Les costards valent plus · Les voitures aussi · Enchaîne pour le combo !</p>
-<p>(Clique pour commencer)</p></div>
+</head><body>
+<div id="hud"><div class="s">Score: <span id="score">0</span></div><div class="m">Money: <span id="money">0</span></div></div>
+<button id="restart" type="button">restart level</button>
+<div id="hint">Clique pour te lancer</div>
+<div id="end"><div id="endt">Niveau terminé</div><small>Clique pour rejouer</small></div>
 <script>/**
  * @license
  * Copyright 2010-2023 Three.js Authors
@@ -34,337 +27,375 @@
 </script>
 <script>
 "use strict";
-// ---------- setup ----------
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0xc9b6ff);
-scene.fog = new THREE.Fog(0xd9c8ff, 60, 260);
-const camera = new THREE.PerspectiveCamera(65, innerWidth/innerHeight, .1, 500);
-const renderer = new THREE.WebGLRenderer({antialias:true});
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-renderer.setSize(innerWidth, innerHeight);
-renderer.shadowMap.enabled = true;
-document.body.appendChild(renderer.domElement);
-addEventListener('resize', () => {
-  camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight);
+const rnd=(a,b)=>a+Math.random()*(b-a), pick=a=>a[Math.floor(Math.random()*a.length)];
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v)), lerp=(a,b,t)=>a+(b-a)*t;
+const V3=THREE.Vector3;
+const $=id=>document.getElementById(id);
+
+// ---------- renderer / scene ----------
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0xdcc8ff);
+scene.fog=new THREE.Fog(0xeadfff,90,340);
+const camera=new THREE.PerspectiveCamera(70,innerWidth/innerHeight,.1,700);
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio||1,1.5));
+renderer.setSize(innerWidth,innerHeight);
+document.body.prepend(renderer.domElement);
+addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)});
+// light is pushed past 1 on purpose: the ground clips to pure white like in the video
+scene.add(new THREE.HemisphereLight(0xffffff,0xffe9f9,1.05));
+const sun=new THREE.DirectionalLight(0xfff4ff,.5); sun.position.set(40,100,60); scene.add(sun);
+
+const mats={};
+const M=c=>mats[c]||(mats[c]=new THREE.MeshLambertMaterial({color:c}));
+const box=(w,h,d,c,x=0,y=0,z=0)=>{const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),M(c));m.position.set(x,y,z);return m};
+
+// ---------- textures ----------
+function canvasTex(w,h,draw){const c=document.createElement('canvas');c.width=w;c.height=h;draw(c.getContext('2d'),w,h);const t=new THREE.CanvasTexture(c);t.anisotropy=4;return t}
+const facade=canvasTex(64,64,(g,w,h)=>{
+  g.fillStyle='#d9bcff';g.fillRect(0,0,w,h);
+  g.fillStyle='#5c1f45';g.fillRect(13,12,38,36);
+  g.fillStyle='#8a3a66';g.fillRect(13,12,38,7);
+  g.fillStyle='#c9a2ee';g.fillRect(0,54,w,10);
+  g.fillStyle='#ffffff';g.fillRect(10,48,44,3);
 });
-scene.add(new THREE.HemisphereLight(0xffffff, 0xb59cff, .95));
-const sun = new THREE.DirectionalLight(0xffffff, .6);
-sun.position.set(30, 80, 20); sun.castShadow = true;
-sun.shadow.mapSize.set(1024,1024);
-Object.assign(sun.shadow.camera, {left:-60,right:60,top:60,bottom:-60,near:1,far:200});
-scene.add(sun); scene.add(sun.target);
+facade.wrapS=facade.wrapT=THREE.RepeatWrapping;
+const poopTex=canvasTex(128,128,(g,w,h)=>{
+  g.fillStyle='#9a4a17';g.fillRect(0,0,w,h);
+  for(let i=0;i<90;i++){g.fillStyle=pick(['#7a3410','#b8601f','#6b2b0c']);g.beginPath();g.arc(Math.random()*w,Math.random()*h,rnd(3,10),0,7);g.fill()}
+  for(let i=0;i<60;i++){g.fillStyle=pick(['#ffb02e','#ffd35a','#ff9a1a']);g.beginPath();g.arc(Math.random()*w,Math.random()*h,rnd(1.5,3.5),0,7);g.fill()}
+});
+const splatTex=canvasTex(256,256,(g,w,h)=>{
+  g.translate(w/2,h/2);
+  g.strokeStyle='#5d2509';g.fillStyle='#6b2b0d';g.lineCap='round';
+  for(let i=0;i<26;i++){const a=Math.random()*6.28,l=rnd(50,122);g.lineWidth=rnd(1.5,5);g.beginPath();g.moveTo(Math.cos(a)*20,Math.sin(a)*20);g.lineTo(Math.cos(a)*l,Math.sin(a)*l);g.stroke();g.beginPath();g.arc(Math.cos(a)*(l+5),Math.sin(a)*(l+5),rnd(2,5),0,7);g.fill()}
+  for(let i=0;i<14;i++){const a=Math.random()*6.28,r=rnd(10,62);g.fillStyle=pick(['#6b2b0d','#7a3512','#5a2208']);g.beginPath();g.ellipse(Math.cos(a)*r*.7,Math.sin(a)*r*.7,rnd(18,40),rnd(14,30),Math.random()*3,0,7);g.fill()}
+});
+const glowTex=canvasTex(64,64,(g,w,h)=>{const r=g.createRadialGradient(32,32,0,32,32,32);r.addColorStop(0,'rgba(255,255,255,1)');r.addColorStop(1,'rgba(255,255,255,0)');g.fillStyle=r;g.fillRect(0,0,w,h)});
 
-const rnd = (a,b) => a + Math.random()*(b-a);
-const pick = a => a[Math.floor(Math.random()*a.length)];
-const mat = c => new THREE.MeshLambertMaterial({color:c});
+// ---------- world ----------
+const Z_MAX=60, Z_MIN=-345;
+const ground=new THREE.Mesh(new THREE.PlaneGeometry(1200,1200),M(0xffffff));
+ground.rotation.x=-Math.PI/2;scene.add(ground);
+const road=new THREE.Mesh(new THREE.PlaneGeometry(14,Z_MAX-Z_MIN+40),M(0x9d97ae));
+road.rotation.x=-Math.PI/2;road.position.set(0,.02,(Z_MAX+Z_MIN)/2);scene.add(road);
+for(let z=Z_MAX;z>Z_MIN;z-=9){const d=new THREE.Mesh(new THREE.PlaneGeometry(.35,4),M(0xffffff));d.rotation.x=-Math.PI/2;d.position.set(0,.04,z);scene.add(d)}
+for(let z=30;z>Z_MIN;z-=70) for(let i=-3;i<=3;i++){const s=new THREE.Mesh(new THREE.PlaneGeometry(1.3,4.5),M(0xffffff));s.rotation.x=-Math.PI/2;s.position.set(i*1.9,.04,z);scene.add(s)}
 
-// ---------- world: infinite street along -Z ----------
-const ROAD_W = 16, SIDEWALK_W = 14, CHUNK = 60;
-const chunks = [];
-const buildingCols = [0xff7fb0, 0xa66bff, 0x7fd8ff, 0xffb86b, 0xff6b8b, 0x8a7bff, 0xf2a0ff];
-
-function makeChunk(z0) {
-  const g = new THREE.Group(); g.position.z = z0;
-  const road = new THREE.Mesh(new THREE.PlaneGeometry(ROAD_W, CHUNK), mat(0x8e8a9c));
-  road.rotation.x = -Math.PI/2; road.receiveShadow = true; g.add(road);
-  for (const s of [-1,1]) {
-    const sw = new THREE.Mesh(new THREE.BoxGeometry(SIDEWALK_W, .4, CHUNK), mat(0xfaf6ff));
-    sw.position.set(s*(ROAD_W/2+SIDEWALK_W/2), .2-.01, 0); sw.receiveShadow = true; g.add(sw);
-    // buildings behind sidewalks
-    let z = -CHUNK/2;
-    while (z < CHUNK/2) {
-      const d = rnd(10,18), h = rnd(25,70), w = rnd(14,24);
-      const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(pick(buildingCols)));
-      b.position.set(s*(ROAD_W/2+SIDEWALK_W+w/2), h/2, z+d/2); b.castShadow = true; g.add(b);
-      // windows
-      const wm = mat(0x6a3d8f);
-      for (let y = 5; y < h-3; y += 6) for (let k=0;k<3;k++){
-        const win = new THREE.Mesh(new THREE.PlaneGeometry(2.2,3), wm);
-        win.position.set(s*(ROAD_W/2+SIDEWALK_W)-s*.05, y, z+d*(k+.5)/3);
-        win.rotation.y = -s*Math.PI/2; g.add(win);
-      }
-      z += d+rnd(0,2);
-    }
-  }
-  // lane dashes
-  const dm = mat(0xffffff);
-  for (let z = -CHUNK/2+3; z < CHUNK/2; z += 8) {
-    const d = new THREE.Mesh(new THREE.PlaneGeometry(.4, 3.5), dm);
-    d.rotation.x = -Math.PI/2; d.position.set(0,.02,z); g.add(d);
-  }
-  // crosswalk
-  for (let i=-3;i<=3;i++){
-    const c = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 4), dm);
-    c.rotation.x=-Math.PI/2; c.position.set(i*2.2,.03,CHUNK/2-10); g.add(c);
-  }
-  scene.add(g);
-  return g;
-}
-
-// ---------- targets ----------
-const targets = [];   // people & cars
-const skin = [0xffd9b0,0xf2b988,0xc98a5e,0x8d5a3c];
-const shirts = [0xff3b5c,0x2fb4ff,0xffd23b,0x45c46a,0xffffff,0xb06bff];
-
-function makePerson(suit) {
-  const g = new THREE.Group();
-  const body = suit ? 0x1c1c22 : pick(shirts);
-  const legC = suit ? 0x1c1c22 : pick([0x2f7a4a,0x3a4a9a,0x6b6b6b,0x1c1c22]);
-  const legs = new THREE.Mesh(new THREE.BoxGeometry(.5,.9,.3), mat(legC)); legs.position.y=.45;
-  const torso = new THREE.Mesh(new THREE.BoxGeometry(.7,.8,.4), mat(body)); torso.position.y=1.3;
-  const head = new THREE.Mesh(new THREE.BoxGeometry(.38,.4,.38), mat(pick(skin))); head.position.y=1.95;
-  const hair = new THREE.Mesh(new THREE.BoxGeometry(.42,.18,.42), mat(suit?0x111111:pick([0x222222,0x6b3b1a,0xe8c36a])));
-  hair.position.y=2.12;
-  g.add(legs,torso,head,hair);
-  if (suit) {
-    const tie = new THREE.Mesh(new THREE.BoxGeometry(.1,.5,.05), mat(0xd01030)); tie.position.set(0,1.35,.22); g.add(tie);
-  }
-  g.traverse(o => o.castShadow = true);
-  return g;
-}
-function makeCar() {
-  const g = new THREE.Group();
-  const col = pick([0xffe14d,0xff5a6b,0x3fc3b0,0x6b6bff,0xffffff]);
-  const b = new THREE.Mesh(new THREE.BoxGeometry(2.2,.9,4.6), mat(col)); b.position.y=.8;
-  const t = new THREE.Mesh(new THREE.BoxGeometry(1.8,.8,2.3), mat(col)); t.position.set(0,1.6,-.2);
-  const gl = new THREE.Mesh(new THREE.BoxGeometry(1.82,.55,2.0), mat(0x2a2a40)); gl.position.set(0,1.65,-.2);
-  g.add(b,t,gl);
-  for (const x of [-1.1,1.1]) for (const z of [-1.5,1.5]) {
-    const w = new THREE.Mesh(new THREE.CylinderGeometry(.45,.45,.3,10), mat(0x15151c));
-    w.rotation.z = Math.PI/2; w.position.set(x,.45,z); g.add(w);
-  }
-  g.traverse(o => o.castShadow = true);
-  return g;
-}
-
-function spawnTarget(z) {
-  const r = Math.random();
-  if (r < .22) { // car
-    const lane = pick([-1,1]);
-    const m = makeCar();
-    const x = lane*rnd(2.5,6);
-    m.position.set(x, 0, z);
-    m.rotation.y = lane>0 ? 0 : Math.PI;
-    scene.add(m);
-    targets.push({mesh:m, type:'car', pts:300, money:30, r:2.2, vz:(lane>0?-1:1)*rnd(8,15), vx:0, alive:true});
-  } else {
-    const suit = r < .4;
-    const m = makePerson(suit);
-    const side = pick([-1,1]);
-    const x = side*rnd(ROAD_W/2+.5, ROAD_W/2+SIDEWALK_W-1);
-    m.position.set(x, .4, z);
-    scene.add(m);
-    targets.push({mesh:m, type: suit?'suit':'person', pts: suit?500:100, money: suit?50:10, r:.9,
-      vz: rnd(-2.2,2.2), vx: rnd(-.5,.5), alive:true, phase:Math.random()*9, y0:.4});
+const signCols=[0xff2a4a,0xff5a8a,0xffd23a,0x2ad0a0];
+function building(s,zc,d,h,w){
+  w=w||rnd(26,42);
+  const tint=pick([0xffffff,0xffe6fb,0xe9dcff,0xffd9ee]);
+  const side=facade.clone();side.needsUpdate=true;side.wrapS=side.wrapT=THREE.RepeatWrapping;side.repeat.set(Math.round(d/6),Math.round(h/6));
+  const front=facade.clone();front.needsUpdate=true;front.wrapS=front.wrapT=THREE.RepeatWrapping;front.repeat.set(Math.round(w/6),Math.round(h/6));
+  const mS=new THREE.MeshLambertMaterial({color:tint,map:side}), mF=new THREE.MeshLambertMaterial({color:tint,map:front}), mT=M(0xd9c0f5);
+  const b=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),[mS,mS,mT,mT,mF,mF]);
+  b.position.set(s*(21+w/2),h/2,zc);scene.add(b);
+  if(Math.random()<.65){
+    const sg=box(3.4,rnd(1.6,2.6),.25,pick(signCols),s*(21-1.7),rnd(7,16),zc+rnd(-d/3,d/3));scene.add(sg);
   }
 }
+function strip(s,zA,zB){let z=zA;while(z>zB){const d=rnd(18,32);building(s,z-d/2,d,rnd(40,92));z-=d+rnd(0,1.5)}}
+strip(-1,Z_MAX+20,Z_MIN-20);strip(1,Z_MAX+20,16);strip(1,-16,Z_MIN-20);
+building(1,0,30,100,32);   // the tower you start on
 
-// ---------- bird ----------
-const bird = new THREE.Group();
+// rooftop ledge scene (x>=21, y=100)
+const ledge=new THREE.Group();scene.add(ledge);
+ledge.add(box(2,.7,30,0x8d5ccf,22,100.35,0),box(2,.45,30,0xff4fa0,22,101.1,0),box(2.2,.18,30,0xffd0ea,22,101.42,0));
+{ // woman sitting on the ledge
+  const skin=0xf3c9a0;
+  ledge.add(box(.75,.95,.45,0x2fbf4a,21.9,102.1,0),box(.36,.38,.36,skin,21.9,102.85,0),box(.4,.16,.4,0xe8c06a,21.9,103.1,0));
+  for(const z of[-.2,.2]){
+    ledge.add(box(.85,.3,.28,0x2255dd,22.45,101.65,z),box(.7,.26,.26,skin,23.25,101.65,z),box(.26,1.15,.26,skin,23.6,100.95,z),box(.3,.12,.42,0x111111,23.65,100.3,z));
+  }
+  const pot=box(2.4,1.4,2.4,0xe0243a,29,100.7,-9);ledge.add(pot);
+  const plant=new THREE.Mesh(new THREE.ConeGeometry(1.2,3.4,8),M(0x38c24a));plant.position.set(29,102.8,-9);ledge.add(plant);
+}
+
+// props along the sidewalks
+function prop(){
+  const s=pick([-1,1]), x=s*rnd(8,19), z=rnd(Z_MIN+10,Z_MAX-10), g=new THREE.Group();
+  const t=Math.random();
+  if(t<.3){ // umbrella table
+    const c=pick([0xffffff,0xff3b5c,0xffe14d]);
+    g.add(box(.1,2.2,.1,0x777777,0,1.1,0),box(1.1,.08,1.1,0xd84b4b,0,.8,0));
+    const u=new THREE.Mesh(new THREE.ConeGeometry(2,.9,10),M(c));u.position.y=2.5;g.add(u);
+    g.add(box(.5,.45,.5,0xd0203a,.9,.25,0),box(.5,.45,.5,0xd0203a,-.9,.25,0));
+  } else if(t<.5){ g.add(new THREE.Mesh(new THREE.CylinderGeometry(.45,.4,1.1,10),M(0x2aa8a0))); g.children[0].position.y=.55; }
+  else if(t<.65){ g.add(box(.45,.8,.45,0xe0243a,0,.4,0)); }
+  else if(t<.85){ g.add(box(2,.14,.7,0xc0364a,0,.6,0),box(2,.6,.12,0xc0364a,0,.95,-.3),box(.1,.6,.6,0x333333,-.9,.3,0),box(.1,.6,.6,0x333333,.9,.3,0)); g.rotation.y=Math.PI/2; }
+  else { g.add(box(2.2,1.6,1.6,0x37c36a,0,.8,0)); const aw=box(2.8,.15,2.2,0xff4a4a,0,2.1,0);aw.rotation.z=.15;g.add(aw); }
+  g.position.set(x,0,z);scene.add(g);
+}
+for(let i=0;i<110;i++)prop();
+
+// ---------- cars ----------
+const cars=[];
+function makeCar(){
+  const g=new THREE.Group(), col=pick([0xffe66b,0xffe66b,0xff5a6b,0x3fc3b0,0x7a6bff,0xffffff,0x2b2b38]);
+  g.add(box(2.1,.85,4.6,col,0,.75,0),box(1.8,.8,2.4,col,0,1.55,-.1),box(1.82,.5,2.1,0x25263a,0,1.62,-.1));
+  for(const x of[-1.05,1.05])for(const z of[-1.5,1.5]){const w=new THREE.Mesh(new THREE.CylinderGeometry(.42,.42,.3,10),M(0x15151c));w.rotation.z=Math.PI/2;w.position.set(x,.42,z);g.add(w)}
+  scene.add(g);return g;
+}
+for(let i=0;i<46;i++){
+  const m=makeCar(), parked=Math.random()<.4, lane=pick([-1,1]);
+  const c={mesh:m,parked,hit:false,speed:parked?0:rnd(6,12)*(lane>0?-1:1)};
+  m.position.set(parked?lane*6.1:lane*3.4,0,rnd(Z_MIN,Z_MAX));
+  m.rotation.y=(parked?lane:c.speed<0?1:-1)>0?0:Math.PI;
+  cars.push(c);
+}
+
+// ---------- people ----------
+const geo={
+  leg:new THREE.BoxGeometry(.22,.9,.22).translate(0,-.45,0),
+  arm:new THREE.BoxGeometry(.14,.72,.14).translate(0,-.36,0),
+  torso:new THREE.BoxGeometry(.6,.78,.34), head:new THREE.BoxGeometry(.34,.36,.34), hair:new THREE.BoxGeometry(.38,.15,.38),
+  skirt:new THREE.BoxGeometry(.62,.3,.38), tie:new THREE.BoxGeometry(.09,.5,.04)
+};
+const mesh=(g,c,x,y,z)=>{const m=new THREE.Mesh(g,M(c));m.position.set(x,y,z);return m};
+const skins=[0xffd9b0,0xf2b988,0xc98a5e,0x8d5a3c];
+function makePerson(kind){
+  const root=new THREE.Group(), skin=pick(skins);
+  const suit=kind==='suit';
+  const top=suit?0x16161c:{pink:0xff2a6d,blue:0x26b5ff,white:0xffffff,yellow:0xffd23a}[kind];
+  const lower=suit?0x16161c:kind==='pink'?skin:kind==='blue'?skin:pick([0x2a4aa8,0x707070]);
+  const legL=mesh(geo.leg,lower,-.15,.95,0), legR=mesh(geo.leg,lower,.15,.95,0);
+  const armL=mesh(geo.arm,suit?0x16161c:top,-.4,1.7,0), armR=mesh(geo.arm,suit?0x16161c:top,.4,1.7,0);
+  root.add(legL,legR,armL,armR,mesh(geo.torso,top,0,1.35,0),mesh(geo.head,skin,0,1.95,0),mesh(geo.hair,suit?0x0c0c0c:pick([0x222222,0x6b3b1a,0xe8c36a]),0,2.16,0));
+  if(suit)root.add(mesh(geo.tie,0xd01030,0,1.4,.19));
+  if(kind==='pink')root.add(mesh(geo.skirt,0x0c8a40,0,1.0,0));
+  if(kind==='blue')root.add(mesh(geo.skirt,0x7d7d86,0,.98,0));
+  root.userData={legL,legR,armL,armR};
+  scene.add(root);return root;
+}
+const people=[];
+const PEOPLE=340;
+for(let i=0;i<PEOPLE;i++){
+  const suit=Math.random()<.18, kind=suit?'suit':pick(['pink','blue','white','yellow']);
+  const p={mesh:makePerson(kind),suit,pts:suit?300:100,state:'walk',phase:Math.random()*9,dir:Math.random()<.5?1:-1,speed:rnd(.9,2),fall:0};
+  people.push(p);
+}
+function placePeople(){
+  for(const p of people){
+    const s=pick([-1,1]);
+    const onRoad=Math.random()<.08;
+    p.mesh.position.set(onRoad?rnd(-6,6):s*rnd(8,20),0,rnd(-260,Z_MAX-5));
+    p.mesh.rotation.set(0,0,0);p.state='walk';p.fall=0;
+    p.mesh.userData.armL.rotation.set(0,0,0);p.mesh.userData.armR.rotation.set(0,0,0);
+  }
+  for(const c of cars)c.hit=false;
+}
+
+// ---------- poop ----------
+const poop=new THREE.Group();
 {
-  const body = new THREE.Mesh(new THREE.SphereGeometry(.7,12,10), mat(0xffffff)); body.scale.set(1,.8,1.4);
-  const head = new THREE.Mesh(new THREE.SphereGeometry(.4,10,8), mat(0xffffff)); head.position.set(0,.3,-.9);
-  const beak = new THREE.Mesh(new THREE.ConeGeometry(.15,.5,6), mat(0xffa020)); beak.rotation.x=-Math.PI/2; beak.position.set(0,.25,-1.4);
-  const eye1 = new THREE.Mesh(new THREE.SphereGeometry(.07,6,6), mat(0)); eye1.position.set(.17,.4,-1.15);
-  const eye2 = eye1.clone(); eye2.position.x=-.17;
-  bird.add(body, head, beak, eye1, eye2);
-  bird.wingL = new THREE.Mesh(new THREE.BoxGeometry(1.9,.08,.8), mat(0xe4e0f5)); bird.wingL.position.set(-1.1,.1,0);
-  bird.wingR = new THREE.Mesh(new THREE.BoxGeometry(1.9,.08,.8), mat(0xe4e0f5)); bird.wingR.position.set(1.1,.1,0);
-  bird.add(bird.wingL, bird.wingR);
-  bird.traverse(o => o.castShadow = true);
+  const g1=new THREE.CapsuleGeometry(.5,.95,6,12);g1.rotateZ(Math.PI/2);
+  const a=new THREE.Mesh(g1,new THREE.MeshLambertMaterial({map:poopTex}));
+  const b=new THREE.Mesh(g1,a.material);b.position.set(.7,.05,0);b.rotation.z=.5;b.scale.set(.8,.9,.9);
+  poop.add(a,b);poop.scale.setScalar(1.5);
 }
-scene.add(bird);
+scene.add(poop);poop.visible=false;
+const shadowBlob=new THREE.Mesh(new THREE.CircleGeometry(.9,16),new THREE.MeshBasicMaterial({color:0x000000,transparent:true,opacity:.22,depthWrite:false}));
+shadowBlob.rotation.x=-Math.PI/2;scene.add(shadowBlob);
+const dropLine=new THREE.Line(new THREE.BufferGeometry().setFromPoints([new V3(),new V3(0,-1,0)]),new THREE.LineBasicMaterial({color:0xffffff,transparent:true,opacity:.75}));
+scene.add(dropLine);
+const dropRing=new THREE.Mesh(new THREE.RingGeometry(.35,.55,16),new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.85,side:THREE.DoubleSide}));
+dropRing.rotation.x=-Math.PI/2;scene.add(dropRing);
 
-// aim reticle on the ground
-const reticle = new THREE.Mesh(new THREE.RingGeometry(.8,1,24), new THREE.MeshBasicMaterial({color:0xff2d55, side:THREE.DoubleSide, transparent:true, opacity:.85}));
-reticle.rotation.x = -Math.PI/2; scene.add(reticle);
+const trail=[];
+for(let i=0;i<22;i++){const s=new THREE.Sprite(new THREE.SpriteMaterial({map:glowTex,color:0xff6a8c,transparent:true,depthWrite:false,opacity:0}));s.visible=false;scene.add(s);trail.push({s,life:0})}
+let trailI=0;
+function emitTrail(pos){const t=trail[trailI++%trail.length];t.life=.55;t.s.position.copy(pos);t.s.visible=true}
+
+const splats=[];
+function splat(x,z,size){
+  const m=new THREE.Mesh(new THREE.PlaneGeometry(1,1),new THREE.MeshBasicMaterial({map:splatTex,transparent:true,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-2}));
+  m.rotation.x=-Math.PI/2;m.rotation.z=Math.random()*6.28;m.scale.setScalar(size);m.position.set(x,.06,z);scene.add(m);
+  splats.push(m);if(splats.length>70)scene.remove(splats.shift());
+}
+const crumbs=[];
+const crumbGeo=new THREE.BoxGeometry(.18,.18,.18);
+function burst(pos){for(let i=0;i<9;i++){const m=new THREE.Mesh(crumbGeo,M(0x7a3410));m.position.copy(pos);scene.add(m);crumbs.push({m,v:new V3(rnd(-4,4),rnd(3,8),rnd(-4,4)),life:.8})}}
 
 // ---------- game state ----------
-const FLY_H = 14, SPEED0 = 14;
-let score, money, combo, comboT, speed, worldZ, running = false, bombs, splats, parts, lastShot, nextSpawn, mouse = {x:0,y:0};
-const $ = id => document.getElementById(id);
-const bombGeo = new THREE.SphereGeometry(.3,8,6); bombGeo.scale(1,1.4,1);
-const bombMat = mat(0x7a3b12);
-const splatMat = new THREE.MeshBasicMaterial({color:0x6a2f0e, transparent:true, opacity:.95, depthWrite:false});
-const splatGeo = new THREE.CircleGeometry(1,10);
+let mode='ledge', score=0, money=0, levelPts=0, tMode=0, tLaunch=0, hops=0, still=0;
+const pos=new V3(), vel=new V3();
+let dive=false, bounces=0;
+const mouse={x:0,y:0};
+const introPos=new V3(28.6,102.6,1.1), introLook=new V3(23.3,100.9,0);
+const camPos=introPos.clone(), camLook=introLook.clone();
+const pops=[];
+function setHud(){$('score').textContent=score;$('money').textContent=money}
+function popText(txt,p){const el=document.createElement('div');el.className='pop';el.textContent=txt;document.body.appendChild(el);pops.push({el,p:p.clone(),t:0})}
 
-function reset() {
-  for (const t of targets) scene.remove(t.mesh); targets.length = 0;
-  for (const c of chunks) scene.remove(c); chunks.length = 0;
-  for (const a of [bombs||[], splats||[], parts||[]]) for (const o of a) scene.remove(o.mesh);
-  bombs=[]; splats=[]; parts=[];
-  score=0; money=0; combo=1; comboT=0; speed=SPEED0; worldZ=0; lastShot=0; nextSpawn=0;
-  bird.position.set(0, FLY_H, 0);
-  for (let i=0;i<5;i++) chunks.push(makeChunk(-i*CHUNK + CHUNK));
-  for (let z = 20; z > -250; z -= 5) if (Math.random()<.8) spawnTarget(z);
-  updateHud();
+function resetLevel(){
+  mode='ledge';tMode=0;levelPts=0;hops=0;bounces=0;still=0;dive=false;
+  poop.visible=false;shadowBlob.visible=false;dropLine.visible=false;dropRing.visible=false;
+  for(const s of splats)scene.remove(s);splats.length=0;
+  placePeople();camPos.copy(introPos);camLook.copy(introLook);
+  $('end').style.display='none';$('hint').style.display='block';$('hint').textContent='Clique pour te lancer';
 }
-function updateHud() {
-  $('score').textContent = score; $('money').textContent = money; $('combo').textContent = combo;
+function launch(){
+  mode='fall';tLaunch=0;tMode=0;
+  pos.set(28.5,101.6,.4);vel.set(-9.5,9,-1);
+  poop.visible=true;shadowBlob.visible=true;dropLine.visible=true;dropRing.visible=true;
+  $('hint').textContent='Souris : diriger  ·  Clic : plonger';
 }
+function finish(){
+  mode='over';$('endt').textContent='Niveau terminé  +'+levelPts;$('end').style.display='flex';$('hint').style.display='none';
+  setTimeout(()=>{if(mode==='over')resetLevel()},3200);
+}
+function act(){
+  if(mode==='ledge')launch();
+  else if(mode==='fall')dive=true;
+  else if(mode==='ground'&&hops<3&&pos.y<1.2){hops++;vel.y=7.5;vel.z-=3}
+  else if(mode==='over')resetLevel();
+}
+renderer.domElement.addEventListener('mousedown',act);
+renderer.domElement.addEventListener('touchstart',e=>{const t=e.touches[0];mouse.x=t.clientX/innerWidth*2-1;mouse.y=t.clientY/innerHeight*2-1;act()},{passive:true});
+$('end').addEventListener('click',()=>{if(mode==='over')resetLevel()});
+addEventListener('mousemove',e=>{mouse.x=e.clientX/innerWidth*2-1;mouse.y=e.clientY/innerHeight*2-1});
+addEventListener('touchmove',e=>{const t=e.touches[0];mouse.x=t.clientX/innerWidth*2-1;mouse.y=t.clientY/innerHeight*2-1},{passive:true});
+addEventListener('keydown',e=>{if(e.code==='Space'){e.preventDefault();act()}if(e.code==='KeyR')resetLevel()});
+$('restart').addEventListener('click',e=>{e.stopPropagation();resetLevel()});
 
-// ---------- input ----------
-addEventListener('mousemove', e => {
-  mouse.x = e.clientX/innerWidth*2-1; mouse.y = e.clientY/innerHeight*2-1;
-});
-addEventListener('touchmove', e => {
-  const t = e.touches[0]; mouse.x = t.clientX/innerWidth*2-1; mouse.y = t.clientY/innerHeight*2-1;
-}, {passive:true});
-function drop() {
-  if (!running || performance.now()-lastShot < 180) return;
-  lastShot = performance.now();
-  const m = new THREE.Mesh(bombGeo, bombMat); m.castShadow = true;
-  m.position.copy(bird.position).add(new THREE.Vector3(0,-.6,0));
-  scene.add(m);
-  bombs.push({mesh:m, vy:-2, vz:-speed*.9, vx:(bird.userData.vx||0)});
+function award(pts,at,label){
+  levelPts+=pts;score+=pts;money+=Math.round(pts*.5);setHud();popText(label+' +'+pts,at);
 }
-renderer.domElement.addEventListener('mousedown', drop);
-renderer.domElement.addEventListener('touchstart', drop, {passive:true});
-addEventListener('keydown', e => { if (e.code==='Space') { e.preventDefault(); drop(); } if (e.code==='KeyR') reset(); });
-$('restart').onclick = e => { e.stopPropagation(); reset(); };
-$('msg').onclick = () => { $('msg').style.display='none'; running = true; };
+function hitSomething(){ if(mode==='fall'){mode='ground';tMode=0;$('hint').textContent='Clic : rebondir';vel.z=Math.min(vel.z,-9);dive=false;dropLine.visible=false;dropRing.visible=false} vel.y=Math.max(vel.y,4.8);vel.z*=.85;}
 
-function popText(txt, x, y) {
-  const d = document.createElement('div'); d.className='pop'; d.textContent=txt;
-  d.style.left = x+'px'; d.style.top = y+'px'; document.body.appendChild(d);
-  setTimeout(()=>d.remove(), 1000);
-}
-function screenPos(v) {
-  const p = v.clone().project(camera);
-  return [(p.x+1)/2*innerWidth, (1-p.y)/2*innerHeight];
-}
+// ---------- update ----------
+function updatePoop(dt){
+  tMode+=dt;tLaunch+=dt;
+  const out=pos.x<20;
+  if(out){
+    vel.x+=(clamp((mouse.x*15-pos.x)*1.8,-14,14)-vel.x)*Math.min(1,dt*4);
+    pos.x=clamp(pos.x,-19,19);
+  }
+  if(mode==='fall'){
+    if(out)vel.z+=((-8+mouse.y*6)-vel.z)*Math.min(1,dt*2);
+    vel.y-=(dive?46:15)*dt;vel.y=Math.max(vel.y,dive?-52:-24);
+  } else {
+    vel.y-=26*dt;
+    if(pos.y<=.6) vel.z*=Math.exp(-.75*dt);
+  }
+  pos.addScaledVector(vel,dt);
+  pos.z=clamp(pos.z,Z_MIN,Z_MAX);
 
-function splat(pos, size) {
-  const s = new THREE.Mesh(splatGeo, splatMat);
-  s.rotation.x = -Math.PI/2; s.rotation.z = Math.random()*6;
-  s.scale.set(size*rnd(.8,1.3), size*rnd(.8,1.3), 1);
-  s.position.set(pos.x, .43 + Math.random()*.01, pos.z);
-  scene.add(s); splats.push({mesh:s, z:pos.z});
-  for (let i=0;i<8;i++) {
-    const p = new THREE.Mesh(new THREE.BoxGeometry(.15,.15,.15), bombMat);
-    p.position.copy(pos); p.position.y = .6; scene.add(p);
-    parts.push({mesh:p, v:new THREE.Vector3(rnd(-4,4), rnd(3,7), rnd(-4,4)), life:.7});
+  // ground impact
+  if(pos.y<=.6&&vel.y<0){
+    pos.y=.6;splat(pos.x,pos.z,3+Math.min(2,-vel.y*.08));burst(pos);bounces++;
+    if(mode==='fall'){mode='ground';tMode=0;$('hint').textContent='Clic : rebondir';vel.z=Math.min(vel.z,-10);dropLine.visible=false;dropRing.visible=false;dive=false}
+    vel.y=bounces<4?Math.max(0,9-bounces*2.4):0;
+    if(bounces>=4)vel.y=0;
+  }
+  // people
+  for(const p of people){
+    if(p.state==='hit')continue;
+    const m=p.mesh.position,dx=pos.x-m.x,dz=pos.z-m.z;
+    if(dx*dx+dz*dz<1.6&&pos.y<2.5){
+      p.state='hit';p.fall=0;
+      award(p.pts,new V3(m.x,2.6,m.z),p.suit?'Hit':'Hit');
+      splat(m.x,m.z,2.6);burst(pos);hitSomething();
+    }
+  }
+  for(const c of cars){
+    if(c.hit)continue;
+    const m=c.mesh.position;
+    if(Math.abs(pos.x-m.x)<1.6&&Math.abs(pos.z-m.z)<3&&pos.y<2.3){
+      c.hit=true;award(200,new V3(m.x,2.8,m.z),'Car');burst(pos);
+      vel.y=Math.max(vel.y,6);hitSomething();
+    }
+  }
+  // end of level
+  if(mode==='ground'){
+    const sp=Math.hypot(vel.x,vel.z);
+    still=(pos.y<=.62&&bounces>=4&&sp<2)?still+dt:0;
+    if(still>.6||tMode>16)finish();
   }
 }
 
-function hit(t, pos) {
-  t.alive = false;
-  combo = Math.min(combo+1, 10); comboT = 3;
-  const gain = t.pts*combo; score += gain; money += t.money;
-  const [sx,sy] = screenPos(t.mesh.position.clone().setY(2));
-  popText('+'+gain, sx, sy);
-  splat(pos, t.type==='car' ? 1.8 : 1.1);
-  // knocked-over person flies/falls
-  t.knock = {vy:rnd(4,7), vx:rnd(-6,6), vz:rnd(-3,3), spin:rnd(-8,8)};
-  t.mesh.children.forEach(c => { if (c.material && c.material.color && t.type!=='car') c.material = c.material.clone(); });
-  updateHud();
+function updateWorld(dt){
+  const near=(mode==='ledge'||mode==='over')?null:pos;
+  for(const p of people){
+    const o=p.mesh,u=o.userData;
+    if(p.state==='hit'){
+      p.fall=Math.min(1,p.fall+dt*3);o.rotation.x=-p.fall*Math.PI/2;o.position.y=p.fall*.25;continue;
+    }
+    if(!near)continue;
+    const dx=o.position.x-near.x,dz=o.position.z-near.z,d2=dx*dx+dz*dz;
+    if(d2>130*130)continue;
+    const flee=d2<26*26&&near.y<40;
+    p.phase+=dt*(flee?14:6);
+    const sw=Math.sin(p.phase);
+    u.legL.rotation.x=sw*.7;u.legR.rotation.x=-sw*.7;
+    if(flee){
+      const l=Math.sqrt(d2)||1;o.position.x+=dx/l*5.2*dt;o.position.z+=dz/l*5.2*dt;
+      o.position.x=clamp(o.position.x,-20,20);
+      o.rotation.y=Math.atan2(dx,dz);
+      u.armL.rotation.x=-2.7+sw*.4;u.armR.rotation.x=-2.7-sw*.4;
+    } else {
+      o.position.z+=p.dir*p.speed*dt;if(o.position.z>Z_MAX||o.position.z<Z_MIN)p.dir*=-1;
+      o.rotation.y=p.dir>0?0:Math.PI;
+      u.armL.rotation.x=-sw*.5;u.armR.rotation.x=sw*.5;
+    }
+  }
+  for(const c of cars){
+    if(c.parked)continue;
+    const m=c.mesh.position;m.z+=c.speed*dt;
+    if(m.z>Z_MAX)m.z=Z_MIN;else if(m.z<Z_MIN)m.z=Z_MAX;
+  }
+  for(let i=crumbs.length-1;i>=0;i--){const c=crumbs[i];c.life-=dt;c.v.y-=22*dt;c.m.position.addScaledVector(c.v,dt);if(c.life<=0||c.m.position.y<0){scene.remove(c.m);crumbs.splice(i,1)}}
+  for(const t of trail){if(t.life>0){t.life-=dt;t.s.material.opacity=Math.max(0,t.life/.55)*.8;const k=1.8+(1-t.life/.55)*1.4;t.s.scale.set(k,k,1);if(t.life<=0)t.s.visible=false}}
+  for(let i=pops.length-1;i>=0;i--){
+    const p=pops[i];p.t+=dt;p.p.y+=dt*1.2;
+    const v=p.p.clone().project(camera);
+    if(v.z>1||p.t>1.4){p.el.remove();pops.splice(i,1);continue}
+    p.el.style.left=(v.x+1)/2*innerWidth+'px';p.el.style.top=(1-v.y)/2*innerHeight+'px';p.el.style.opacity=Math.min(1,(1.4-p.t)*2);
+  }
 }
 
-// ---------- loop ----------
-let prev = performance.now(), time = 0;
-function frame(now) {
+function updateVisuals(dt,time){
+  if(!poop.visible)return;
+  poop.position.copy(pos);
+  poop.rotation.x+=dt*4;poop.rotation.z+=dt*3.1;poop.rotation.y+=dt*2;
+  shadowBlob.position.set(pos.x,.07,pos.z);
+  const h=Math.max(0,pos.y);shadowBlob.scale.setScalar(clamp(1.2-h/100,.35,1.2));
+  if(dropLine.visible){
+    const a=dropLine.geometry.attributes.position;a.setXYZ(0,pos.x,pos.y-.5,pos.z);a.setXYZ(1,pos.x,.1,pos.z);a.needsUpdate=true;
+    dropRing.position.set(pos.x,.08,pos.z);dropRing.scale.setScalar(1+Math.sin(time*8)*.15);
+  }
+  if(mode!=='over')emitTrail(pos);
+}
+
+const tmpF=new V3(),dPos=new V3(),dLook=new V3();
+function updateCamera(dt,time){
+  if(mode==='ledge'||(mode==='over'&&!poop.visible)){
+    dPos.copy(introPos).add(tmpF.set(Math.sin(time*.8)*.15,Math.sin(time*1.1)*.08,0));dLook.copy(introLook);
+  } else {
+    const turn=clamp(tLaunch/2.4,0,1),k=turn*turn*(3-2*turn);
+    const psi=lerp(-Math.PI/2,0,k);
+    tmpF.set(Math.sin(psi),0,-Math.cos(psi));
+    const alt=clamp((pos.y-.6)/55,0,1);
+    const back=lerp(6.5,11,alt),up=lerp(3.2,12,alt),ahead=lerp(16,9,alt);
+    dPos.copy(pos).addScaledVector(tmpF,-back);dPos.y+=up;
+    dLook.copy(pos).addScaledVector(tmpF,ahead);dLook.y=lerp(pos.y+.4,Math.max(.5,pos.y-26),alt);
+  }
+  camPos.lerp(dPos,1-Math.exp(-7*dt));camLook.lerp(dLook,1-Math.exp(-9*dt));
+  camera.position.copy(camPos);camera.lookAt(camLook);
+}
+
+let prev=performance.now(),time=0;
+function frame(now){
   requestAnimationFrame(frame);
-  const dt = Math.min((now-prev)/1000, .05); prev = now; time += dt;
-  if (running) step(dt);
-  renderer.render(scene, camera);
+  const dt=Math.min((now-prev)/1000,.05);prev=now;time+=dt;
+  if(mode==='fall'||mode==='ground')updatePoop(dt);
+  if(mode==='ground'&&tMode>4)$('hint').style.display='none';
+  updateWorld(dt);updateVisuals(dt,time);updateCamera(dt,time);
+  renderer.render(scene,camera);
 }
-
-function step(dt) {
-  speed = SPEED0 + Math.min(worldZ/-60, 14);   // gets faster the further you go
-  // bird steering
-  const tx = mouse.x*22, tz = bird.position.z; // x follows mouse
-  const nx = THREE.MathUtils.lerp(bird.position.x, tx, 1-Math.pow(.0005, dt));
-  bird.userData.vx = (nx-bird.position.x)/dt;
-  bird.position.x = nx;
-  const ty = FLY_H + (-mouse.y)*5;
-  bird.position.y = THREE.MathUtils.lerp(bird.position.y, ty, 1-Math.pow(.001, dt));
-  bird.position.z -= speed*dt;
-  bird.rotation.z = -bird.userData.vx*.03;
-  const flap = Math.sin(time*14)*.5;
-  bird.wingL.rotation.z = flap; bird.wingR.rotation.z = -flap;
-  worldZ = bird.position.z;
-
-  // camera: behind and above, looking ahead & down
-  camera.position.set(bird.position.x*.6, bird.position.y+9, bird.position.z+15);
-  camera.lookAt(bird.position.x*.6, 0, bird.position.z-14);
-  sun.position.set(bird.position.x+30, 80, bird.position.z+20); sun.target.position.copy(bird.position);
-
-  // endless chunks
-  const first = chunks[0];
-  if (first.position.z - CHUNK/2 > bird.position.z + 60 + CHUNK) {
-    scene.remove(first); chunks.shift();
-    const last = chunks[chunks.length-1];
-    chunks.push(makeChunk(last.position.z - CHUNK));
-  }
-  // spawn targets ahead
-  while (nextSpawn > bird.position.z - 220) {
-    nextSpawn -= rnd(2.5, 6);
-    if (nextSpawn < bird.position.z - 60 || true) spawnTarget(nextSpawn);
-  }
-  if (nextSpawn > bird.position.z) nextSpawn = bird.position.z - 220;
-
-  // reticle: where a bomb would land
-  const fall = Math.sqrt(2*(bird.position.y-.4)/22);
-  reticle.position.set(bird.position.x + (bird.userData.vx||0)*fall*.5, .45, bird.position.z - speed*.9*fall);
-  reticle.rotation.z += dt;
-
-  // targets
-  for (let i=targets.length-1;i>=0;i--) {
-    const t = targets[i], m = t.mesh;
-    if (t.alive) {
-      m.position.z += t.vz*dt; m.position.x += t.vx*dt;
-      if (t.type!=='car') {
-        t.phase += dt*8; m.position.y = t.y0 + Math.abs(Math.sin(t.phase))*.08;
-        m.rotation.y = Math.atan2(t.vx, t.vz) || 0;
-        // flee a little when a bomb is close above
-      }
-    } else if (t.knock) {
-      const k = t.knock; k.vy -= 20*dt;
-      m.position.x += k.vx*dt; m.position.z += k.vz*dt; m.position.y += k.vy*dt;
-      m.rotation.x += k.spin*dt; m.rotation.z += k.spin*.5*dt;
-      if (m.position.y < -3) { scene.remove(m); targets.splice(i,1); continue; }
-    }
-    if (m.position.z > bird.position.z + 50) { scene.remove(m); targets.splice(i,1); }
-  }
-
-  // bombs
-  for (let i=bombs.length-1;i>=0;i--) {
-    const b = bombs[i];
-    b.vy -= 22*dt;
-    b.mesh.position.x += b.vx*dt; b.mesh.position.z += b.vz*dt; b.mesh.position.y += b.vy*dt;
-    b.mesh.rotation.x += 6*dt;
-    const p = b.mesh.position;
-    let landed = false;
-    // against targets (height of person ~2.3, car ~2)
-    for (const t of targets) {
-      if (!t.alive) continue;
-      const tp = t.mesh.position, top = t.type==='car'?2.1:2.4;
-      if (p.y < top && p.y > -.2) {
-        const dx = p.x-tp.x, dz = p.z-tp.z;
-        if (dx*dx+dz*dz < t.r*t.r*1.4) { hit(t, new THREE.Vector3(tp.x, 0, tp.z)); landed = true; break; }
-      }
-    }
-    if (!landed && p.y < .45) {
-      landed = true; splat(new THREE.Vector3(p.x,0,p.z), .8);
-      combo = 1; updateHud();     // miss breaks the combo
-    }
-    if (landed) { scene.remove(b.mesh); bombs.splice(i,1); }
-  }
-
-  // splats fade out behind you
-  for (let i=splats.length-1;i>=0;i--) if (splats[i].z > bird.position.z+60) { scene.remove(splats[i].mesh); splats.splice(i,1); }
-  // particles
-  for (let i=parts.length-1;i>=0;i--) {
-    const p = parts[i]; p.life -= dt; p.v.y -= 20*dt; p.mesh.position.addScaledVector(p.v, dt);
-    if (p.life<=0 || p.mesh.position.y<0) { scene.remove(p.mesh); parts.splice(i,1); }
-  }
-  // combo decay
-  if (combo>1) { comboT -= dt; if (comboT<=0) { combo=1; updateHud(); } }
-}
-
-reset();
-requestAnimationFrame(frame);
+window.__game={people,get mode(){return mode},get pos(){return pos},get score(){return score},act,mouse};
+resetLevel();setHud();requestAnimationFrame(frame);
 </script>
-</body>
-</html>
+
+</body></html>
