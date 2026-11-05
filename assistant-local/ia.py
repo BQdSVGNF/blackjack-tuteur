@@ -139,6 +139,66 @@ def gerer_commandes(commandes):
     return "Résultat des commandes :\n" + "\n\n".join(resultats)
 
 
+# ---------- Menu (raccourcis numérotés) ----------
+
+# Chaque entrée : ("prompt", texte)  -> envoyé à l'IA
+#                 ("cmd", commande)  -> commande Windows lancée directement
+#                 ("info", texte)    -> simple message
+#                 ("lancer",)        -> demande un programme et l'ouvre
+#                 ("reset",)         -> nouvelle partie
+RACCOURCIS = {
+    "1": ("info", "Pose ta question ou écris ton message, tout simplement."),
+    "2": ("info", "Tape : /web suivi de ta question (ex. : /web prix RTX 4060)."),
+    "3": ("prompt", "J'ai besoin d'aide pour coder. Demande-moi ce que je veux faire, "
+                    "puis donne-moi le code complet."),
+    "4": ("reset",),
+    "5": ("prompt", "Explique-moi la stratégie de base au blackjack sous forme de tableau "
+                    "clair (ma main en lignes, la carte du croupier en colonnes)."),
+    "6": ("prompt", "Apprends-moi à compter les cartes au blackjack avec le système Hi-Lo, "
+                    "étape par étape, avec un exemple."),
+    "7": ("prompt", "Fais-moi un quiz de blackjack : donne-moi une situation (ma main + la "
+                    "carte du croupier) et demande-moi ce que je ferais, puis corrige."),
+    "8": ("cmd", "systeminfo"),
+    "9": ("cmd", 'powershell -NoProfile -Command "Get-CimInstance Win32_LogicalDisk | '
+                 "Select-Object DeviceID,"
+                 "@{n='LibreGo';e={[math]::Round($_.FreeSpace/1GB,1)}},"
+                 "@{n='TotalGo';e={[math]::Round($_.Size/1GB,1)}} | Format-Table -AutoSize\""),
+    "10": ("lancer",),
+    "11": ("cmd", 'ipconfig | findstr /i "IPv4"'),
+    "12": ("cmd", "ping -n 4 8.8.8.8"),
+    "13": ("cmd", "netstat -n"),
+}
+
+
+def gerer_raccourci(saisie, historique):
+    """Traite un numéro du menu.
+
+    Retourne "ia" si un prompt a été injecté (l'IA doit répondre),
+    "ok" si l'action est terminée, ou None si ce n'est pas un raccourci connu.
+    """
+    r = RACCOURCIS.get(saisie)
+    if r is None:
+        return None
+    genre = r[0]
+    if genre == "prompt":
+        historique.append({"role": "user", "content": r[1]})
+        return "ia"
+    if genre == "info":
+        ui.info("\n" + r[1], ui.OR)
+    elif genre == "cmd":
+        ui.info("\n♦ " + r[1], ui.OR)
+        ui.info(executer(r[1]))
+    elif genre == "lancer":
+        nom = ui.demander_texte("Nom ou chemin du programme (ex. notepad)")
+        if nom:
+            ui.info(executer(f'start "" {nom}'))
+    elif genre == "reset":
+        historique.clear()
+        ui.info("\n♠ Nouvelle partie : mémoire effacée.", ui.OR)
+        ui.distribuer([("10", "♦"), ("A", "♣")])
+    return "ok"
+
+
 # ---------- Boucle principale ----------
 
 def main():
@@ -159,14 +219,22 @@ def main():
             ui.distribuer([("10", "♦"), ("A", "♣")])
             ui.separateur()
             continue
+        if saisie.lower() == "menu":
+            ui.menu(animer=False)
+            continue
 
-        if saisie.lower().startswith("/web "):
-            question = saisie[5:].strip()
-            historique.append({"role": "user", "content": question})
-            historique.append({"role": "user",
-                               "content": message_resultats(question, recherche_web(question))})
-        else:
-            historique.append({"role": "user", "content": saisie})
+        raccourci = gerer_raccourci(saisie, historique)
+        if raccourci == "ok":
+            ui.separateur()
+            continue
+        elif raccourci is None:
+            if saisie.lower().startswith("/web "):
+                question = saisie[5:].strip()
+                historique.append({"role": "user", "content": question})
+                historique.append({"role": "user",
+                                   "content": message_resultats(question, recherche_web(question))})
+            else:
+                historique.append({"role": "user", "content": saisie})
 
         # L'IA peut enchaîner recherches et commandes (5 étapes max)
         for _ in range(5):

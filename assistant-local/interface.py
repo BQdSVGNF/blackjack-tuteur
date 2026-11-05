@@ -4,6 +4,7 @@ Fonctionne dans le cmd de Windows 10/11 (couleurs ANSI 24 bits).
 Mets la variable d'environnement BJ_SANS_ANIMATION=1 pour couper les animations.
 """
 import os
+import re
 import shutil
 import sys
 import threading
@@ -163,6 +164,76 @@ def separateur():
     _ecrire(BASE + DISCRET + "─" * min(largeur() - 1, 90) + BASE + "\n")
 
 
+# ---------- Menu en sections ----------
+
+BLEU = _txt(95, 155, 230)
+CYAN = _txt(90, 200, 200)
+LARGEUR_BOITE = 44
+
+
+def _long_visible(s):
+    return len(re.sub(r"\x1b\[[0-9;]*m", "", s))
+
+
+def _boite(titre, entrees, couleur):
+    """Construit les lignes d'une boîte encadrée de largeur fixe."""
+    dedans = LARGEUR_BOITE - 2
+    t = f" {titre} "
+    reste = dedans - len(t)
+    g = max(reste // 2, 0)
+    d = max(reste - g, 0)
+    lignes = [couleur + GRAS + "┌" + "─" * g + t + "─" * d + "┐" + BASE]
+    for num, label in entrees:
+        corps = f" {OR}[{num:>2}]{TEXTE} {label}"
+        pad = dedans - _long_visible(corps)
+        lignes.append(couleur + "│" + BASE + corps + " " * max(pad, 0) + couleur + "│" + BASE)
+    lignes.append(couleur + "└" + "─" * dedans + "┘" + BASE)
+    return lignes
+
+
+def menu(animer=True):
+    """Affiche les fonctions de Black Jack en boîtes, deux par rangée."""
+    sections = [
+        ("♠ TABLE — L'IA", [
+            ("1", "Discuter (tape ton message)"),
+            ("2", "Recherche web sourcée"),
+            ("3", "Aide au code"),
+            ("4", "Nouvelle partie (efface la mémoire)"),
+        ], VERT),
+        ("♥ STRATÉGIE BLACKJACK", [
+            ("5", "Stratégie de base"),
+            ("6", "Apprendre à compter (Hi-Lo)"),
+            ("7", "Quiz : que faire ?"),
+        ], ROUGE),
+        ("♦ SYSTÈME — ma machine", [
+            ("8", "Infos système"),
+            ("9", "Espace disque"),
+            ("10", "Lancer un programme"),
+        ], OR),
+        ("♣ RÉSEAU — ma connexion", [
+            ("11", "Mon adresse IP"),
+            ("12", "Tester ma connexion (ping)"),
+            ("13", "Mes connexions actives"),
+        ], BLEU),
+    ]
+    anim, globals()["ANIMATIONS"] = ANIMATIONS, ANIMATIONS and animer
+    marge = max((largeur() - (2 * LARGEUR_BOITE + 3)) // 2, 0)
+    for i in range(0, len(sections), 2):
+        gauche = _boite(*sections[i])
+        droite = _boite(*sections[i + 1]) if i + 1 < len(sections) else None
+        vide = " " * LARGEUR_BOITE
+        hauteur = max(len(gauche), len(droite) if droite else 0)
+        for j in range(hauteur):
+            lg = gauche[j] if j < len(gauche) else vide
+            ligne = BASE + " " * marge + lg
+            if droite:
+                ligne += "   " + (droite[j] if j < len(droite) else vide)
+            _ecrire(ligne + BASE + "\n")
+            _pause(0.012)
+        _ecrire("\n")
+    globals()["ANIMATIONS"] = anim
+
+
 def ecran_accueil(modele):
     initialiser()
     _ecrire("\n")
@@ -176,15 +247,10 @@ def ecran_accueil(modele):
     _ecrire(_centrer("", len(sous_titre)))
     machine_a_ecrire(sous_titre, DISCRET, 0.006)
     _ecrire("\n")
-    aide = [
-        ("/web <question>", "recherche sur internet avec sources"),
-        ("reset", "nouvelle partie (efface la mémoire)"),
-        ("exit", "quitter la table"),
-    ]
-    for cmd, desc in aide:
-        _ecrire(f"   {OR}{cmd:<17}{DISCRET}{desc}{BASE}\n")
-        _pause(0.05)
-    _ecrire("\n")
+    menu()
+    indice = (f"   {DISCRET}Tape un {OR}numéro{DISCRET}, un {OR}message{DISCRET}, "
+              f"{OR}menu{DISCRET} pour revoir ceci, ou {OR}exit{DISCRET} pour quitter.{BASE}")
+    _ecrire(indice + "\n")
     separateur()
 
 
@@ -201,6 +267,14 @@ def demander_saisie():
     _ecrire("\n" + OR + GRAS + "♣ Toi ›" + RESET + FOND + BLANC + " ")
     try:
         return input()
+    finally:
+        _ecrire(BASE)
+
+
+def demander_texte(invite):
+    _ecrire("\n" + OR + "  " + invite + " › " + BLANC)
+    try:
+        return input().strip()
     finally:
         _ecrire(BASE)
 
