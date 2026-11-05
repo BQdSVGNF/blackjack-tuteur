@@ -1,4 +1,4 @@
-"""Mon-IA : assistant local (Ollama) avec recherche web sourcée et commandes Windows.
+"""Black Jack : assistant local (Ollama) avec recherche web sourcée et commandes Windows.
 
 - L'IA peut chercher sur le web (bloc ```recherche```) et cite ses sources [1], [2]...
 - L'IA peut proposer des commandes Windows (bloc ```cmd```), exécutées après ta confirmation.
@@ -16,6 +16,8 @@ except ImportError:
     print("Le module 'ollama' manque. Lance : pip install ollama")
     sys.exit(1)
 
+import interface as ui
+
 try:
     from ddgs import DDGS
 except ImportError:
@@ -24,7 +26,7 @@ except ImportError:
     except ImportError:
         DDGS = None
 
-MODELE = "mon-ia"  # créé à partir du Modelfile
+MODELE = "black-jack"  # créé à partir du Modelfile
 MAX_MESSAGES = 16  # reste dans les 8192 tokens de contexte
 NB_RESULTATS = 5
 NB_PAGES_LUES = 3
@@ -38,12 +40,20 @@ BLOC_RECHERCHE = re.compile(r"```(?:recherche|search|web)\s*\n(.*?)```", re.DOTA
 def demander_ia(historique):
     messages = historique[-MAX_MESSAGES:]  # la personnalité est dans le Modelfile
     reponse = ""
-    print("IA: ", end="", flush=True)
-    for morceau in ollama.chat(model=MODELE, messages=messages, stream=True, keep_alive="30m"):
-        texte = morceau["message"]["content"]
-        print(texte, end="", flush=True)
-        reponse += texte
-    print()
+    animation = ui.Animation("Black Jack réfléchit").demarrer()
+    try:
+        for morceau in ollama.chat(model=MODELE, messages=messages, stream=True, keep_alive="30m"):
+            texte = morceau["message"]["content"]
+            if animation:  # premier morceau reçu : on arrête l'animation et on affiche
+                animation.arreter()
+                animation = None
+                ui.etiquette_ia()
+            ui.morceau_ia(texte)
+            reponse += texte
+    finally:
+        if animation:
+            animation.arreter()
+    ui.fin_reponse()
     return reponse
 
 
@@ -66,24 +76,28 @@ def recherche_web(requete):
     """Renvoie un bloc de texte avec les résultats numérotés et leurs URLs."""
     if DDGS is None:
         return "[recherche impossible : module 'ddgs' manquant, lance : pip install ddgs]"
-    print(f"\n🔎 Recherche : {requete}")
     try:
-        resultats = list(DDGS().text(requete, max_results=NB_RESULTATS))
+        with ui.Animation(f"Black Jack fouille le web : {requete}"):
+            resultats = list(DDGS().text(requete, max_results=NB_RESULTATS))
     except Exception as e:
+        ui.erreur(f"Recherche échouée : {e}")
         return f"[recherche échouée : {e}]"
+    ui.info(f"\n♦ Recherche : {requete}", ui.OR)
     if not resultats:
         return "[aucun résultat]"
 
     blocs = []
+    with ui.Animation("Black Jack lit les pages"):
+        for i, r in enumerate(resultats, 1):
+            url = r.get("href") or r.get("url", "")
+            contenu = r.get("body", "")
+            if i <= NB_PAGES_LUES:
+                page = texte_de_la_page(url)
+                if page:
+                    contenu = page
+            blocs.append(f"[{i}] {r.get('title', '')}\nURL : {url}\n{contenu}")
     for i, r in enumerate(resultats, 1):
-        url = r.get("href") or r.get("url", "")
-        print(f"   [{i}] {r.get('title', '')} - {url}")
-        contenu = r.get("body", "")
-        if i <= NB_PAGES_LUES:
-            page = texte_de_la_page(url)
-            if page:
-                contenu = page
-        blocs.append(f"[{i}] {r.get('title', '')}\nURL : {url}\n{contenu}")
+        ui.info(f"   [{i}] {r.get('title', '')} - {r.get('href') or r.get('url', '')}")
     return "\n\n".join(blocs)
 
 
@@ -108,17 +122,17 @@ def executer(commande):
 def gerer_commandes(commandes):
     resultats = []
     for cmd in commandes:
-        choix = input(f"\n>>> Exécuter : {cmd}\n    (o = oui / n = non / t = oui à tout) : ").strip().lower()
+        choix = ui.demander_confirmation(cmd)
         if choix == "t":
             for reste in commandes[commandes.index(cmd):]:
-                print(f"--- {reste}")
+                ui.info(f"♦ {reste}", ui.OR)
                 r = executer(reste)
-                print(r)
+                ui.info(r)
                 resultats.append(f"$ {reste}\n{r}")
             break
         if choix == "o":
             r = executer(cmd)
-            print(r)
+            ui.info(r)
             resultats.append(f"$ {cmd}\n{r}")
         else:
             resultats.append(f"$ {cmd}\n[refusée par l'utilisateur]")
@@ -129,13 +143,10 @@ def gerer_commandes(commandes):
 
 def main():
     historique = []
-    print(f"Mon-IA activée ({MODELE}).")
-    print("  /web <question>  recherche sur internet avec sources")
-    print("  reset            efface la mémoire")
-    print("  exit             quitte\n")
+    ui.ecran_accueil(MODELE)
     while True:
         try:
-            saisie = input("Vous: ").strip()
+            saisie = ui.demander_saisie().strip()
         except (EOFError, KeyboardInterrupt):
             break
         if not saisie:
@@ -144,7 +155,9 @@ def main():
             break
         if saisie.lower() == "reset":
             historique.clear()
-            print("Mémoire effacée.\n")
+            ui.info("\n♠ Nouvelle partie : mémoire effacée.", ui.OR)
+            ui.distribuer([("10", "♦"), ("A", "♣")])
+            ui.separateur()
             continue
 
         if saisie.lower().startswith("/web "):
@@ -160,7 +173,7 @@ def main():
             try:
                 reponse = demander_ia(historique)
             except Exception as e:
-                print(f"\nErreur Ollama : {e}\n(Ollama est-il lancé ? 'ollama serve')")
+                ui.erreur(f"Erreur Ollama : {e} (Ollama est-il lancé ? 'ollama serve')")
                 break
             historique.append({"role": "assistant", "content": reponse})
 
@@ -177,7 +190,8 @@ def main():
                 historique.append({"role": "user", "content": gerer_commandes(commandes)})
                 continue
             break
-        print()
+        ui.separateur()
+    ui.ecran_sortie()
 
 
 if __name__ == "__main__":
