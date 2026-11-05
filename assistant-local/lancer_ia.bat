@@ -14,9 +14,9 @@ where ollama >nul 2>nul || (
     pause & exit /b 1
 )
 
-python -c "import ollama" 2>nul || (
-    echo Installation du module ollama...
-    python -m pip install --quiet ollama
+python -c "import ollama, ddgs" 2>nul || (
+    echo Installation des modules Python ^(ollama, ddgs^)...
+    python -m pip install --quiet ollama ddgs
 )
 
 rem ===== Optimisations RTX 4060 (8 Go) + Ryzen 5 5600 =====
