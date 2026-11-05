@@ -15,7 +15,7 @@ except ImportError:
     sys.exit(1)
 
 MODELE = "mon-ia"  # créé à partir du Modelfile
-MAX_MESSAGES = 30
+MAX_MESSAGES = 20  # reste dans les 8192 tokens de contexte
 
 
 BLOC_CMD = re.compile(r"```(?:cmd|bat|batch|powershell)?\s*\n(.*?)```", re.DOTALL | re.IGNORECASE)
@@ -25,7 +25,7 @@ def demander_ia(historique):
     messages = historique[-MAX_MESSAGES:]  # la personnalité est dans le Modelfile
     reponse = ""
     print("IA: ", end="", flush=True)
-    for morceau in ollama.chat(model=MODELE, messages=messages, stream=True):
+    for morceau in ollama.chat(model=MODELE, messages=messages, stream=True, keep_alive="30m"):
         texte = morceau["message"]["content"]
         print(texte, end="", flush=True)
         reponse += texte
