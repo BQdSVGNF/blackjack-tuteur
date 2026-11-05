@@ -14,27 +14,15 @@ except ImportError:
     print("Le module 'ollama' manque. Lance : pip install ollama")
     sys.exit(1)
 
-MODELE = "llama3"
+MODELE = "mon-ia"  # créé à partir du Modelfile
 MAX_MESSAGES = 30
 
-SYSTEME = {
-    "role": "system",
-    "content": (
-        "Tu es un assistant direct et efficace qui tourne sur un PC Windows. "
-        "Tu réponds en français, sans détour. Quand l'utilisateur demande une action "
-        "sur son ordinateur (fichiers, dossiers, programmes, infos système), tu fournis "
-        "la ou les commandes Windows cmd nécessaires dans UN bloc :\n"
-        "```cmd\n<commandes>\n```\n"
-        "Une commande par ligne. Après exécution, tu recevras la sortie et tu pourras "
-        "continuer ou corriger. Si aucune commande n'est utile, réponds simplement."
-    ),
-}
 
 BLOC_CMD = re.compile(r"```(?:cmd|bat|batch|powershell)?\s*\n(.*?)```", re.DOTALL | re.IGNORECASE)
 
 
 def demander_ia(historique):
-    messages = [SYSTEME] + historique[-MAX_MESSAGES:]
+    messages = historique[-MAX_MESSAGES:]  # la personnalité est dans le Modelfile
     reponse = ""
     print("IA: ", end="", flush=True)
     for morceau in ollama.chat(model=MODELE, messages=messages, stream=True):

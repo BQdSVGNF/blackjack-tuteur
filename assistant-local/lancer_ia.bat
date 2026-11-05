@@ -20,8 +20,12 @@ python -c "import ollama" 2>nul || (
 rem Démarre le serveur Ollama s'il ne tourne pas déjà
 tasklist /fi "imagename eq ollama.exe" | find /i "ollama.exe" >nul || start "" /min ollama serve
 
-rem Télécharge le modèle la première fois
+rem Télécharge la base la première fois
 ollama list | find /i "llama3" >nul || ollama pull llama3
+
+rem Crée (ou met à jour) ton modèle à partir du Modelfile
+echo Création du modèle mon-ia...
+ollama create mon-ia -f Modelfile >nul || (echo Échec de la création du modèle. & pause & exit /b 1)
 
 python ia.py
 pause
