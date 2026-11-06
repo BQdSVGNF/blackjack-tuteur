@@ -131,13 +131,17 @@ BANNIERE = [
 ]
 
 
+# Dégradé du logo : bleu glacé, du plus clair en haut au bleu profond en bas (effet glace).
+DEGRADE_LOGO = [(210, 235, 255), (165, 212, 250), (120, 185, 240), (90, 155, 225), (62, 122, 205)]
+
+
 def _centrer(texte, visible=None):
     n = len(texte) if visible is None else visible
     return " " * max((largeur() - n) // 2, 0) + texte
 
 
 def banniere():
-    degrade = [(80, 205, 120), (120, 205, 105), (165, 200, 90), (200, 192, 78), (226, 186, 70)]
+    degrade = DEGRADE_LOGO
     n = max(len(l) for l in BANNIERE)
     for ligne, (r, g, b) in zip(BANNIERE, degrade):
         _ecrire(BASE + _txt(r, g, b) + GRAS + _centrer(ligne.ljust(n)) + BASE + "\n")
@@ -204,7 +208,7 @@ def intro_animee():
     etoiles = [(rng.randint(0, W - 1), rng.randint(0, ciel_h),
                 rng.uniform(0, 6.28), rng.choice("··.*+"))
                for _ in range(int(W * ciel_h * 0.08))]
-    degrade = [(80, 205, 120), (120, 205, 105), (165, 200, 90), (200, 192, 78), (226, 186, 70)]
+    degrade = DEGRADE_LOGO
 
     gouttes = []
     frame_gouttes = 8 + 2 * len(logo)
@@ -248,7 +252,7 @@ def intro_animee():
             suivantes = []
             for x, y, vie in gouttes:
                 if 0 <= y < H and 0 <= x < W:
-                    grille[y][x] = ("|" if vie > 1 else ".", _txt(150, 205, 170))
+                    grille[y][x] = ("|" if vie > 1 else ".", _txt(120, 180, 235))
                 if vie > 1 and y + 1 < H:
                     suivantes.append([x, y + 1, vie - 1])
             gouttes = suivantes
