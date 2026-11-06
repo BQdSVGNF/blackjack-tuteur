@@ -405,10 +405,24 @@ def _intro_oeil(W, H):
     Rt = (Rp + Ri) / 2.0                        # rayon des enseignes-tomoe
     enseignes = ["♠", "♥", "♦", "♣"]
     cols_ens = [_txt(170, 235, 255), _txt(255, 130, 180), _txt(255, 185, 125), _txt(160, 255, 195)]
-    frames = 48
+
+    # courbe d'ouverture : deux clignements rapides, puis ouverture complète
+    cles = [(0.0, 0.0), (0.09, 0.55), (0.15, 0.06), (0.23, 0.60), (0.30, 0.05),
+            (0.60, 1.0), (1.0, 1.0)]
+
+    def _ouverture(t):
+        for i in range(len(cles) - 1):
+            t0, v0 = cles[i]
+            t1, v1 = cles[i + 1]
+            if t <= t1:
+                k = (t - t0) / (t1 - t0) if t1 > t0 else 1.0
+                return v0 + (v1 - v0) * k
+        return cles[-1][1]
+
+    frames = 58
     for f in range(frames):
         grille = [[(" ", None, None) for _ in range(W)] for _ in range(H)]
-        ouv = min((f + 1) / (frames * 0.55), 1.0)       # ouverture sur ~55 % du temps
+        ouv = _ouverture(f / (frames - 1))              # cligne puis s'ouvre en grand
         ang = f * 0.33
         for y in range(max(cy - Hy, 0), min(cy + Hy + 1, H)):
             dy = y - cy
