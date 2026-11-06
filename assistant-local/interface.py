@@ -306,11 +306,49 @@ CARS_PLUIE = "01010110¦:+*=<>/\\!?#$%&01"
 
 
 try:
-    from mots_glitch import MOTS as _MOTS_GLITCH
+    from mots_glitch import MOTS as _MOTS_GLITCH, GRANTED as _GRANTED
 except Exception:
-    _MOTS_GLITCH = []
+    _MOTS_GLITCH, _GRANTED = [], []
 
 _GLITCH_GARBAGE = "!<>/\\#%&01=?*¦:+"
+
+# petit « ✓ » en blocs, affiché à droite d'« ACCÈS AUTORISÉ »
+_CHECK = ["      ", "     █", "█   █ ", " █ █  ", "  █   "]
+
+
+def _intro_granted(W, H):
+    """Affiche « ACCÈS AUTORISÉ ✓ » en vert, stable, avant le logo."""
+    if not _GRANTED:
+        return
+    art = _GRANTED
+    h = len(art)
+    bloc = max(len(l) for l in art) + 2 + len(_CHECK[0])
+    top = max(H // 2 - h // 2, 0)
+    gauche = max((W - bloc) // 2, 0)
+    gx_check = gauche + max(len(l) for l in art) + 2
+    sous = "✓  A C C È S   A U T O R I S É  ✓"
+    for fr in range(22):
+        grille = [[(" ", None, None) for _ in range(W)] for _ in range(H)]
+        vif = _txt(80, 255, 140) if fr % 6 < 4 else _txt(140, 255, 185)   # léger pulse
+        for i, ligne in enumerate(art):
+            for j, ch in enumerate(ligne):
+                if ch != " " and 0 <= gauche + j < W:
+                    grille[top + i][gauche + j] = (ch, vif, None)
+        for i, ligne in enumerate(_CHECK):                 # la coche ✓
+            for j, ch in enumerate(ligne):
+                if ch != " " and 0 <= gx_check + j < W:
+                    grille[top + i][gx_check + j] = (ch, _txt(180, 255, 200), None)
+        col = max((W - len(sous)) // 2, 0)                 # ligne nette dessous
+        for i, ch in enumerate(sous):
+            if 0 <= col + i < W:
+                grille[min(top + h + 1, H - 1)][col + i] = (ch, _txt(120, 255, 170), None)
+        if random.random() < 0.3:                          # scanline discrète
+            yy = random.randint(0, H - 1)
+            for x in range(0, W, 2):
+                if grille[yy][x][0] == " ":
+                    grille[yy][x] = ("─", _txt(30, 80, 55), None)
+        _ecrire(_rendu_grille(grille))
+        time.sleep(0.05)
 
 
 def _intro_glitch(W, H):
@@ -422,6 +460,7 @@ def intro_animee():
     try:
         _intro_oeil(W, H)                    # l'« œil » qui s'ouvre + enseignes qui tournent
         _intro_glitch(W, H)                  # mots « hacker » qui flashent (glitch)
+        _intro_granted(W, H)                 # « ACCÈS AUTORISÉ ✓ » en vert
         for f in range(total):
             grille = [[(" ", None, None) for _ in range(W)] for _ in range(H)]
 
