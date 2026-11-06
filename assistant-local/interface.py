@@ -390,80 +390,190 @@ def _intro_boot(W, H):
 
 
 def _intro_granted(W, H):
-    """Affiche « ACCÈS AUTORISÉ ✓ » en vert, stable, avant le logo."""
+    """Panneau encadré « ACCÈS AUTORISÉ ✓ » en vert, avant le logo."""
     if not _GRANTED:
         return
     _bip()                                    # signal de validation
     art = _GRANTED
     h = len(art)
-    bloc = max(len(l) for l in art) + 2 + len(_CHECK[0])
-    top = max(H // 2 - h // 2, 0)
-    gauche = max((W - bloc) // 2, 0)
-    gx_check = gauche + max(len(l) for l in art) + 2
-    sous = "✓  A C C È S   A U T O R I S É  ✓"
-    for fr in range(22):
+    aw = max(len(l) for l in art)
+    bloc = aw + 2 + len(_CHECK[0])
+    cw = min(bloc + 10, W - 2)                 # largeur du panneau
+    ch_ = h + 4                                 # hauteur du panneau
+    top = max(H // 2 - ch_ // 2, 0)
+    left = max((W - cw) // 2, 0)
+    a_top = top + 2
+    a_left = left + max((cw - bloc) // 2, 1)
+    gx_check = a_left + aw + 2
+    titre = " ◆ ACCÈS AUTORISÉ ◆ "
+    sous = "NIVEAU 21 · COFFRE DÉBLOQUÉ"
+    for fr in range(24):
         grille = [[(" ", None, None) for _ in range(W)] for _ in range(H)]
-        vif = _txt(80, 255, 140) if fr % 6 < 4 else _txt(140, 255, 185)   # léger pulse
-        for i, ligne in enumerate(art):
-            for j, ch in enumerate(ligne):
-                if ch != " " and 0 <= gauche + j < W:
-                    grille[top + i][gauche + j] = (ch, vif, None)
-        for i, ligne in enumerate(_CHECK):                 # la coche ✓
-            for j, ch in enumerate(ligne):
-                if ch != " " and 0 <= gx_check + j < W:
-                    grille[top + i][gx_check + j] = (ch, _txt(180, 255, 200), None)
-        col = max((W - len(sous)) // 2, 0)                 # ligne nette dessous
-        for i, ch in enumerate(sous):
-            if 0 <= col + i < W:
-                grille[min(top + h + 1, H - 1)][col + i] = (ch, _txt(120, 255, 170), None)
-        if random.random() < 0.3:                          # scanline discrète
-            yy = random.randint(0, H - 1)
-            for x in range(0, W, 2):
-                if grille[yy][x][0] == " ":
-                    grille[yy][x] = ("─", _txt(30, 80, 55), None)
+        vif = _txt(90, 255, 150) if fr % 6 < 4 else _txt(150, 255, 190)
+        bord = _txt(55, 200, 120)
+        for x in range(left, left + cw):        # bords haut/bas
+            if 0 <= x < W:
+                grille[top][x] = ("─", bord, None)
+                grille[top + ch_ - 1][x] = ("─", bord, None)
+        for y in range(top, top + ch_):         # bords gauche/droite
+            if 0 <= y < H:
+                grille[y][left] = ("│", bord, None)
+                if left + cw - 1 < W:
+                    grille[y][left + cw - 1] = ("│", bord, None)
+        for yy, xx, c in [(top, left, "┌"), (top, left + cw - 1, "┐"),
+                          (top + ch_ - 1, left, "└"), (top + ch_ - 1, left + cw - 1, "┘")]:
+            if 0 <= yy < H and 0 <= xx < W:
+                grille[yy][xx] = (c, bord, None)
+        tx = left + max((cw - len(titre)) // 2, 0)     # titre dans la bordure
+        for i, c in enumerate(titre):
+            if 0 <= tx + i < W:
+                grille[top][tx + i] = (c, vif, None)
+        for i, ligne in enumerate(art):                 # le mot + la coche
+            for j, c in enumerate(ligne):
+                if c != " " and 0 <= a_left + j < W and a_top + i < H:
+                    grille[a_top + i][a_left + j] = (c, vif, None)
+        for i, ligne in enumerate(_CHECK):
+            for j, c in enumerate(ligne):
+                if c != " " and 0 <= gx_check + j < W and a_top + i < H:
+                    grille[a_top + i][gx_check + j] = (c, _txt(180, 255, 200), None)
+        sx = left + max((cw - len(sous)) // 2, 0)       # sous-titre
+        sy = a_top + h + 1
+        if sy < H:
+            for i, c in enumerate(sous):
+                if 0 <= sx + i < W:
+                    grille[sy][sx + i] = (c, _txt(120, 255, 170), None)
         _ecrire(_rendu_grille(grille))
         time.sleep(0.05)
 
 
+def _cadre_mot(grille, W, H, gauche, top, w, h, couleur, label):
+    """Dessine un cadre à coins + un petit label au-dessus d'un mot."""
+    coins = [(gauche - 3, top - 1, "┌"), (gauche + w + 2, top - 1, "┐"),
+             (gauche - 3, top + h, "└"), (gauche + w + 2, top + h, "┘")]
+    for x0, y0, ch in coins:
+        if 0 <= x0 < W and 0 <= y0 < H:
+            grille[y0][x0] = (ch, couleur, None)
+            for d in (1, 2):                      # petits segments aux coins
+                if "┌" in ch or "└" in ch:
+                    if 0 <= x0 + d < W:
+                        grille[y0][x0 + d] = ("─", couleur, None)
+                else:
+                    if 0 <= x0 - d < W:
+                        grille[y0][x0 - d] = ("─", couleur, None)
+    for i, ch in enumerate(label):
+        x = gauche - 3 + i
+        if 0 <= x < W and top - 2 >= 0:
+            grille[top - 2][x] = (ch, _txt(75, 135, 100), None)
+
+
 def _intro_glitch(W, H):
-    """Séquence de mots « hacker » qui flashent avec un effet glitch
-    (aberration chromatique, caractères corrompus, scanlines)."""
+    """Chaque mot se « décode » : un scan balaie de gauche à droite, du bruit
+    devant, le mot net derrière, avec cadre, label de module et aberration."""
     if not _MOTS_GLITCH:
         return
     couleurs = [VERT, CYAN, OR, MAGENTA]
     cy0 = H // 2
+    n = len(_MOTS_GLITCH)
     for idx, (mot, art) in enumerate(_MOTS_GLITCH):
         h = len(art)
         w = max(len(l) for l in art)
         top = max(cy0 - h // 2, 0)
         gauche = max((W - w) // 2, 0)
         couleur = couleurs[idx % len(couleurs)]
-        for fr in range(9):
+        label = f"> MODULE {idx + 1:02d}/{n:02d}  [{mot}]"
+
+        # --- décodage : le scan révèle le mot ---
+        for sx in range(-2, w + 3):
             grille = [[(" ", None, None) for _ in range(W)] for _ in range(H)]
-            glitchy = fr < 2 or random.random() < 0.35
-            dx = random.choice((-2, -1, 1, 2)) if glitchy else 0
             for i, ligne in enumerate(art):
                 y = top + i
                 if not (0 <= y < H):
                     continue
                 for j, ch in enumerate(ligne):
+                    x = gauche + j
+                    if not (0 <= x < W):
+                        continue
+                    if ch == " ":
+                        if j > sx and random.random() < 0.05:    # bruit léger dans les vides
+                            grille[y][x] = (random.choice(_GLITCH_GARBAGE), _txt(28, 66, 50), None)
+                        continue
+                    if j < sx - 1:                               # déjà révélé : net
+                        c = random.choice(_GLITCH_GARBAGE) if random.random() < 0.03 else ch
+                        grille[y][x] = (c, couleur, None)
+                    elif j <= sx + 1:                            # ligne de scan : éclat + chroma
+                        grille[y][x] = (ch, _txt(240, 255, 250), None)
+                        if 0 <= x + 1 < W:
+                            grille[y][x + 1] = (ch, MAGENTA, None)
+                    elif random.random() < 0.55:                # pas encore : bruit
+                        grille[y][x] = (random.choice(_GLITCH_GARBAGE), _txt(55, 115, 85), None)
+            _cadre_mot(grille, W, H, gauche, top, w, h, _txt(70, 115, 95), label)
+            _ecrire(_rendu_grille(grille))
+            time.sleep(0.02)
+
+        # --- tenue nette + un bref burst glitch ---
+        for fr in range(6):
+            grille = [[(" ", None, None) for _ in range(W)] for _ in range(H)]
+            burst = fr == 3
+            dx = random.choice((-2, 2)) if burst else 0
+            for i, ligne in enumerate(art):
+                y = top + i
+                for j, ch in enumerate(ligne):
                     if ch == " ":
                         continue
-                    c = random.choice(_GLITCH_GARBAGE) if (glitchy and random.random() < 0.12) else ch
                     x = gauche + j
-                    if glitchy and 0 <= x + dx < W:            # aberration chromatique
-                        grille[y][x + dx] = (c, CYAN if dx < 0 else MAGENTA, None)
+                    if burst and 0 <= x + dx < W:
+                        grille[y][x + dx] = (ch, CYAN if dx < 0 else MAGENTA, None)
                     if 0 <= x < W:
-                        grille[y][x] = (c, couleur, None)
-            if random.random() < 0.5:                          # scanline
-                yy = random.randint(0, H - 1)
-                for x in range(0, W, 2):
-                    if grille[yy][x][0] == " ":
-                        grille[yy][x] = ("─", _txt(40, 90, 80), None)
+                        grille[y][x] = (ch, couleur, None)
+            _cadre_mot(grille, W, H, gauche, top, w, h, couleur, label)
             _ecrire(_rendu_grille(grille))
-            time.sleep(0.045)
+            time.sleep(0.04)
         _ecrire(_rendu_grille([[(" ", None, None) for _ in range(W)] for _ in range(H)]))
+        time.sleep(0.03)
+
+
+def _intro_decrypt(W, H):
+    """Barre de décryptage qui se remplit, avec hex qui défile — avant l'accès."""
+    cy = H // 2
+    titre = "DÉCRYPTAGE DU COFFRE · AES-256"
+    barw = min(W - 24, 52)
+    gx = max((W - barw) // 2, 0)
+    octets = max((W - 12) // 3, 8)
+    frames = 34
+    for fr in range(frames):
+        prog = fr / (frames - 1)
+        grille = [[(" ", None, None) for _ in range(W)] for _ in range(H)]
+        tx = max((W - len(titre)) // 2, 0)              # titre
+        for i, ch in enumerate(titre):
+            grille[cy - 3][tx + i] = (ch, CYAN, None)
+        for r in range(1, 4):                            # hex qui défile dessous
+            s = " ".join(f"{random.randint(0, 255):02X}" for _ in range(octets))
+            hx = max((W - len(s)) // 2, 0)
+            for i, ch in enumerate(s):
+                if 0 <= hx + i < W:
+                    grille[cy + 1 + r][hx + i] = (ch, _txt(40, 115, 72), None)
+        rempli = int(prog * barw)                        # barre
+        if gx - 2 >= 0:
+            grille[cy][gx - 2] = ("[", DISCRET, None)
+        if gx + barw + 1 < W:
+            grille[cy][gx + barw + 1] = ("]", DISCRET, None)
+        for i in range(barw):
+            x = gx + i
+            if 0 <= x < W:
+                if i < rempli:
+                    grille[cy][x] = ("█", VERT, None)
+                elif i == rempli:
+                    grille[cy][x] = ("▓", _txt(180, 255, 200), None)
+                else:
+                    grille[cy][x] = ("░", _txt(35, 80, 58), None)
+        pct = f"{int(prog * 100):3d}%"                   # pourcentage
+        for i, ch in enumerate(pct):
+            x = gx + barw + 3 + i
+            if 0 <= x < W:
+                grille[cy][x] = (ch, VERT, None)
+        _ecrire(_rendu_grille(grille))
         time.sleep(0.04)
+    time.sleep(0.12)
 
 
 def _intro_oeil(W, H):
@@ -599,8 +709,9 @@ def intro_animee():
     try:
         _intro_boot(W, H)                    # journal de démarrage « hacker »
         _intro_oeil(W, H)                    # l'« œil » qui s'ouvre + enseignes qui tournent
-        _intro_glitch(W, H)                  # mots « hacker » qui flashent (glitch)
-        _intro_granted(W, H)                 # « ACCÈS AUTORISÉ ✓ » en vert
+        _intro_glitch(W, H)                  # mots « hacker » qui se décodent (scan)
+        _intro_decrypt(W, H)                 # barre de décryptage + hex
+        _intro_granted(W, H)                 # panneau « ACCÈS AUTORISÉ ✓ »
         for f in range(total):
             grille = [[(" ", None, None) for _ in range(W)] for _ in range(H)]
 
