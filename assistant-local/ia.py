@@ -180,11 +180,20 @@ def demander_ia(historique):
                     reponse += texte
                 if bloc.get("done"):
                     break
+    except urllib.error.HTTPError as e:
+        if animation:
+            animation.arreter()
+        if e.code == 404:                      # Ollama répond mais le modèle n'existe pas
+            raise RuntimeError(
+                f"Le modèle « {MODELE} » n'existe pas encore dans Ollama. "
+                f"Dans ce dossier, lance : ollama create {MODELE} -f Modelfile "
+                "(après ollama pull llama3.1:8b-instruct-q4_K_M).")
+        raise RuntimeError(f"Ollama a répondu une erreur {e.code}.")
     except urllib.error.URLError as e:
         if animation:
             animation.arreter()
-        raise RuntimeError(f"Ollama injoignable ({getattr(e, 'reason', e)}). "
-                           "Lance Ollama (ou c'est normal s'il n'est pas installé sur cet appareil).")
+        raise RuntimeError(f"Ollama n'est pas lancé ({getattr(e, 'reason', e)}). "
+                           "Démarre Ollama (ou c'est normal s'il n'est pas installé sur cet appareil).")
     finally:
         if animation:
             animation.arreter()
