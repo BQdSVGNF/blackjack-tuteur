@@ -3,6 +3,7 @@
 Fonctionne dans le cmd de Windows 10/11 (couleurs ANSI 24 bits).
 Mets la variable d'environnement BJ_SANS_ANIMATION=1 pour couper les animations.
 """
+import colorsys
 import math
 import os
 import random
@@ -190,6 +191,40 @@ def _lignes_logo(fac=1.0, reflet=None, rayon=4):
     return lignes
 
 
+def _teinte(c, deg):
+    """Fait tourner la teinte d'une couleur (pour le titre néon arc-en-ciel)."""
+    if deg % 360 == 0:
+        return c
+    h, l, s = colorsys.rgb_to_hls(c[0] / 255, c[1] / 255, c[2] / 255)
+    h = (h + (deg % 360) / 360.0) % 1.0
+    s = min(1.0, s * 1.25 + 0.15)          # pousse la saturation → néon
+    r, g, b = colorsys.hls_to_rgb(h, l, s)
+    return (int(r * 255), int(g * 255), int(b * 255))
+
+
+def _lignes_logo_teinte(deg):
+    """Le logo entier avec la teinte décalée de `deg` degrés."""
+    lignes = []
+    for cr in range(LOGO_ROWS):
+        buf, cfg, cbg = [], None, None
+        for x in range(LOGO_COLS):
+            fg = _txt(*_teinte(LOGO[2 * cr][x], deg))
+            bg = _fond(*_teinte(LOGO[2 * cr + 1][x], deg))
+            if fg != cfg:
+                buf.append(fg); cfg = fg
+            if bg != cbg:
+                buf.append(bg); cbg = bg
+            buf.append("▀")
+        lignes.append("".join(buf) + BASE)
+    return lignes
+
+
+# On pré-calcule les variantes de teinte (le titre cyclera à travers tout l'arc-en-ciel).
+_PAS_TEINTE = 48
+_LOGO_TEINTES = ([_lignes_logo_teinte(i * 360 // _PAS_TEINTE) for i in range(_PAS_TEINTE)]
+                 if LOGO_COLS else [])
+
+
 def banniere():
     marge = " " * _marge_logo()
     for ligne in _lignes_logo():
@@ -243,74 +278,79 @@ def _rendu_grille(grille):
     return "".join(out)
 
 
+CARS_PLUIE = "01010110¦:+*=<>/\\!?#$%&01"
+
+
 def intro_animee():
-    """Cinématique : ciel étoilé scintillant, logo glacé révélé par balayage,
-    reflet qui repasse, puis gouttes qui tombent des stalactites."""
+    """Pluie de code « Matrix » plein écran, d'où émerge le logo glacé qui
+    se révèle par balayage avec un reflet. Effet d'ouverture « wow »."""
     if not ANIMATIONS or LOGO_COLS == 0:
         return
-    W = min(largeur() - 1, max(LOGO_COLS + 4, 80))
+    taille = shutil.get_terminal_size((100, 30))
+    W = min(taille.columns - 1, max(LOGO_COLS + 6, 80))
+    H = min(max(taille.lines - 1, LOGO_ROWS + 10), 28)
     gauche = max((W - LOGO_COLS) // 2, 0)
-    ciel_h = 7
-    haut_logo = ciel_h + 1
-    H = haut_logo + LOGO_ROWS + 2
+    haut_logo = max((H - LOGO_ROWS) // 2 - 1, 0)
 
     rng = random.Random(os.environ.get("BJ_SEED"))
-    etoiles = [(rng.randint(0, W - 1), rng.randint(0, ciel_h - 1),
-                rng.uniform(0, 6.28), rng.choice("01·.:+*¦"))
-               for _ in range(int(W * ciel_h * 0.09))]
+    # une goutte de pluie par colonne : [tête (float), vitesse, longueur de traînée]
+    tetes = [[rng.uniform(-H, 0), rng.uniform(0.5, 1.3), rng.randint(5, max(6, H - 2))]
+             for _ in range(W)]
 
-    # pointe basse de chaque colonne encrée (pour faire tomber les gouttes)
-    pointes = []
-    for x in range(LOGO_COLS):
-        for y in range(LOGO_HPX - 1, -1, -1):
-            if LOGO_MASQUE[y][x]:
-                pointes.append((x, y // 2))
-                break
-
-    reveal = (LOGO_COLS + 8) // 3            # fin de la révélation par balayage
-    total = reveal + 42
-    gouttes = []
+    R1 = 26                                  # pluie seule
+    reveal = LOGO_COLS // 4 + 2              # révélation du logo
+    hold = 26                                # logo complet + reflet, la pluie s'efface
+    total = R1 + reveal + hold
 
     _cacher_curseur()
     try:
         for f in range(total):
             grille = [[(" ", None, None) for _ in range(W)] for _ in range(H)]
 
-            # ciel scintillant
-            for x, y, phase, ch in etoiles:
-                b = 0.5 + 0.5 * math.sin(f * 0.35 + phase)
-                col = _txt(30, 70, 60) if b < 0.3 else (
-                    _txt(55, 150, 130) if b < 0.65 else _txt(120, 255, 200))
-                grille[y][x] = (ch, col, None)
+            # fondu de la pluie une fois le logo révélé
+            if f < R1 + reveal:
+                fade = 1.0
+            else:
+                fade = max(0.18, 1.0 - (f - (R1 + reveal)) / hold)
 
-            # logo : colonnes révélées de gauche à droite, reflet au front
-            if f < reveal:
-                jusqua = f * 3
+            # ----- pluie de code -----
+            for x in range(W):
+                t = tetes[x]
+                t[0] += t[1]
+                if t[0] - t[2] > H + 1:
+                    t[0] = rng.uniform(-H, 0.0)
+                    t[1] = rng.uniform(0.5, 1.3)
+                    t[2] = rng.randint(5, max(6, H - 2))
+                tete_y = int(t[0])
+                for k in range(t[2]):
+                    y = tete_y - k
+                    if 0 <= y < H:
+                        ch = CARS_PLUIE[(x * 7 + y * 13 + f) % len(CARS_PLUIE)]
+                        if k == 0:
+                            col = _txt(200, 255, 220)               # tête brillante
+                        else:
+                            v = fade * (1 - k / t[2])
+                            col = _txt(int(35 + 110 * v), int(120 + 135 * v), int(70 + 110 * v))
+                        grille[y][x] = (ch, col, None)
+
+            # ----- logo qui émerge -----
+            if f < R1:
+                jusqua, reflet = -1, None
+            elif f < R1 + reveal:
+                jusqua = (f - R1) * 4
                 reflet = jusqua
             else:
                 jusqua = LOGO_COLS
-                reflet = (f - reveal) * 6 - 6     # un reflet repasse une fois
+                reflet = (f - (R1 + reveal)) * 6 - 6
 
-            for cr in range(LOGO_ROWS):
-                for x in range(min(jusqua + 1, LOGO_COLS)):
-                    if not (LOGO_MASQUE[2 * cr][x] or LOGO_MASQUE[2 * cr + 1][x]):
-                        continue
-                    fg = _txt(*_ajuste(LOGO[2 * cr][x], 1.0, x, reflet, 4))
-                    bg = _fond(*_ajuste(LOGO[2 * cr + 1][x], 1.0, x, reflet, 4))
-                    grille[haut_logo + cr][gauche + x] = ("▀", fg, bg)
-
-            # gouttes qui tombent des stalactites, une fois le logo révélé
-            if f == reveal:
-                choisies = [p for p in pointes if rng.random() < 0.22]
-                gouttes = [[gauche + x, haut_logo + ry + 1, rng.randint(2, 4)]
-                           for x, ry in choisies]
-            suivantes = []
-            for x, y, vie in gouttes:
-                if 0 <= y < H and 0 <= x < W:
-                    grille[y][x] = ("|" if vie > 1 else ".", _txt(150, 210, 240), None)
-                if vie > 1 and y + 1 < H:
-                    suivantes.append([x, y + 1, vie - 1])
-            gouttes = suivantes
+            if jusqua >= 0:
+                for cr in range(LOGO_ROWS):
+                    for x in range(min(jusqua + 1, LOGO_COLS)):
+                        if not (LOGO_MASQUE[2 * cr][x] or LOGO_MASQUE[2 * cr + 1][x]):
+                            continue
+                        fg = _txt(*_ajuste(LOGO[2 * cr][x], 1.0, x, reflet, 4))
+                        bg = _fond(*_ajuste(LOGO[2 * cr + 1][x], 1.0, x, reflet, 4))
+                        grille[haut_logo + cr][gauche + x] = ("▀", fg, bg)
 
             _ecrire(_rendu_grille(grille))
             time.sleep(0.05)
@@ -398,33 +438,31 @@ sur_menu = False           # vrai tant que l'écran du menu est affiché tel que
 _pulse = None
 
 
-def _peindre_titre(facteur, reflet=None):
-    """Repeint le titre à une luminosité donnée (+ reflet), sans bouger le curseur."""
+def _peindre_titre_lignes(lignes):
+    """Repeint le titre à partir de lignes déjà prêtes, sans bouger le curseur."""
     marge = " " * _marge_logo()
     buf = ["\x1b7"]        # sauve la position du curseur (là où l'utilisateur tape)
-    for i, ligne in enumerate(_lignes_logo(facteur, reflet)):
+    for i, ligne in enumerate(lignes):
         buf.append(f"\x1b[{LIGNE_TITRE + i};1H" + BASE + "\x1b[K" + marge + ligne)
     buf.append("\x1b8")    # restaure la position du curseur
     return "".join(buf)
 
 
 class _Pulsation(threading.Thread):
+    """Fait cycler la teinte du titre à travers tout l'arc-en-ciel (néon)."""
     def __init__(self):
         super().__init__(daemon=True)
         self.stop = threading.Event()
 
     def run(self):
-        f = 0
-        sweep = -999                               # dernier déclenchement de reflet
+        if not _LOGO_TEINTES:
+            return
+        i = 0
+        n = len(_LOGO_TEINTES)
         while not self.stop.is_set():
-            facteur = 0.84 + 0.16 * math.sin(f * 0.17)     # respiration douce
-            if f - sweep > 75:                     # un reflet repasse toutes les ~6 s
-                sweep = f
-            pos = (f - sweep) * 6
-            reflet = pos if 0 <= pos <= LOGO_COLS else None
-            _ecrire(_peindre_titre(facteur, reflet))
-            f += 1
-            self.stop.wait(0.07)
+            _ecrire(_peindre_titre_lignes(_LOGO_TEINTES[i % n]))
+            i += 1
+            self.stop.wait(0.09)
 
 
 def demarrer_pulsation():
@@ -440,7 +478,8 @@ def arreter_pulsation():
         _pulse.stop.set()
         _pulse.join()
         _pulse = None
-        _ecrire(_peindre_titre(1.0))   # titre net, pleine luminosité
+        if _LOGO_TEINTES:
+            _ecrire(_peindre_titre_lignes(_LOGO_TEINTES[0]))   # retour à la teinte de base
 
 
 def afficher_menu(modele):
