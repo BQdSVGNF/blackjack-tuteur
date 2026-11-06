@@ -21,12 +21,13 @@ PLUIE_VITESSE = 1.0        # multiplicateur de vitesse de la pluie
 TITRE_CYCLE = True         # True = le titre cycle l'arc-en-ciel, False = couleur fixe
 SON = True                 # bips de validation
 CRT = True                 # effet scanlines / vieil écran
+MUSIQUE = True             # musique d'ambiance pendant l'intro
 
 
 def appliquer_params(animations=None, densite=None, vitesse=None, cycle=None,
-                     son=None, crt=None):
+                     son=None, crt=None, musique=None):
     """Applique les réglages du mode Paramètres (à chaud)."""
-    global ANIMATIONS, PLUIE_DENSITE, PLUIE_VITESSE, TITRE_CYCLE, SON, CRT
+    global ANIMATIONS, PLUIE_DENSITE, PLUIE_VITESSE, TITRE_CYCLE, SON, CRT, MUSIQUE
     if animations is not None:
         ANIMATIONS = (bool(animations) and sys.stdout.isatty()
                       and os.environ.get("BJ_SANS_ANIMATION") != "1")
@@ -40,6 +41,31 @@ def appliquer_params(animations=None, densite=None, vitesse=None, cycle=None,
         SON = bool(son)
     if crt is not None:
         CRT = bool(crt)
+    if musique is not None:
+        MUSIQUE = bool(musique)
+
+
+def jouer_musique():
+    """Lance la musique d'ambiance (musique.wav), en boucle, sans bloquer (Windows)."""
+    if not MUSIQUE:
+        return
+    chemin = os.path.join(os.path.dirname(os.path.abspath(__file__)), "musique.wav")
+    if not os.path.exists(chemin):
+        return
+    try:
+        import winsound
+        winsound.PlaySound(chemin, winsound.SND_FILENAME | winsound.SND_ASYNC | winsound.SND_LOOP)
+    except Exception:
+        pass
+
+
+def couper_musique():
+    """Arrête la musique d'ambiance (au moment où le menu s'affiche)."""
+    try:
+        import winsound
+        winsound.PlaySound(None, winsound.SND_PURGE)
+    except Exception:
+        pass
 
 
 def _bip(sequence=((880, 90), (1245, 130))):
@@ -1031,6 +1057,7 @@ def _composer_menu(modele):
 def afficher_menu(modele):
     """Compose et pose l'écran du menu (titre en haut), prêt pour le fond animé."""
     global sur_menu, _grille_menu, _menu_bas, _titre_marge
+    couper_musique()                 # la musique d'intro s'arrête quand le menu apparaît
     grille, bas, ml = _composer_menu(modele)
     _grille_menu, _menu_bas, _titre_marge = grille, bas, ml
     out = [BASE + "\x1b[2J\x1b[H"]

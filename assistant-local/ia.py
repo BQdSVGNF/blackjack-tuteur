@@ -32,6 +32,7 @@ DEFAUTS = {
     "titre_cycle": True,            # titre arc-en-ciel animé
     "son": True,                    # bips de validation
     "crt": True,                    # effet scanlines / vieil écran
+    "musique_intro": True,          # musique d'ambiance Black Jack pendant l'intro
 }
 DENSITES = {"faible": 0.4, "moyenne": 0.8, "forte": 1.0}
 VITESSES = {"lente": 0.6, "normale": 1.0, "rapide": 1.7}
@@ -63,6 +64,7 @@ def appliquer_conf(conf):
         cycle=conf.get("titre_cycle", True),
         son=conf.get("son", True),
         crt=conf.get("crt", True),
+        musique=conf.get("musique_intro", True),
     )
 
 
@@ -98,6 +100,7 @@ def ecran_parametres(conf):
             ("6", "Titre arc-en-ciel (sinon fixe)", oui(conf["titre_cycle"])),
             ("7", "Son (bips de validation)", oui(conf["son"])),
             ("8", "Effet CRT (scanlines)", oui(conf["crt"])),
+            ("9", "Musique d'intro (Black Jack)", oui(conf["musique_intro"])),
             ("0", "Revenir au menu", ""),
         ]
         for num, nom, val in lignes:
@@ -127,6 +130,8 @@ def ecran_parametres(conf):
             conf["son"] = not conf["son"]
         elif choix == "8":
             conf["crt"] = not conf["crt"]
+        elif choix == "9":
+            conf["musique_intro"] = not conf["musique_intro"]
         else:
             continue
         sauver_conf(conf)
@@ -342,8 +347,9 @@ def main():
     historique = []
     conf = charger_conf()
     appliquer_conf(conf)                 # applique les réglages avant l'intro
-    lancer_musique(conf)                 # ouvre Spotify si activé
-    ui.ecran_accueil(MODELE)
+    ui.jouer_musique()                   # musique mystérieuse pendant l'intro
+    ui.ecran_accueil(MODELE)             # (la musique se coupe quand le menu s'affiche)
+    lancer_musique(conf)                 # puis Spotify prend le relais dans le menu
     while True:
         if ui.sur_menu:
             ui.demarrer_pulsation()      # fond animé pendant l'attente de saisie
