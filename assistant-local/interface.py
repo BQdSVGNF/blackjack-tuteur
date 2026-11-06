@@ -120,22 +120,34 @@ def distribuer(main):
         _pause(0.2)
 
 
-# ---------- Bannière ----------
+# ---------- Logo glacé (image rendue en demi-blocs ▀) ----------
+# Chaque caractère ▀ = 2 pixels (couleur du haut en avant-plan, couleur du bas
+# en fond). On obtient quasiment la finesse d'une image, tout en restant terminal.
 
-# Logo "ANSI Shadow" : blocs pleins avec relief, le beau style des outils CLI.
-BANNIERE = [
-    '██████╗ ██╗      █████╗  ██████╗██╗  ██╗         ██╗ █████╗  ██████╗██╗  ██╗',
-    '██╔══██╗██║     ██╔══██╗██╔════╝██║ ██╔╝         ██║██╔══██╗██╔════╝██║ ██╔╝',
-    '██████╔╝██║     ███████║██║     █████╔╝          ██║███████║██║     █████╔╝ ',
-    '██╔══██╗██║     ██╔══██║██║     ██╔═██╗     ██   ██║██╔══██║██║     ██╔═██╗ ',
-    '██████╔╝███████╗██║  ██║╚██████╗██║  ██╗    ╚█████╔╝██║  ██║╚██████╗██║  ██╗',
-    '╚═════╝ ╚══════╝╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝     ╚════╝ ╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝',
-]
+BG_RGB = (7, 38, 23)
 
 
-# Dégradé du logo : cyan électrique en haut, bleu profond en bas (effet glace glossy).
-DEGRADE_LOGO = [(235, 252, 255), (150, 236, 255), (85, 200, 255), (70, 158, 250), (80, 120, 235), (58, 78, 180)]
-OMBRE_LOGO = _txt(22, 34, 90)      # ombre portée sombre sous le titre
+def _charger_logo():
+    chemin = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logo_glace.rgb")
+    try:
+        with open(chemin, "rb") as fp:
+            data = fp.read()
+    except OSError:
+        return 0, 0, [], []
+    cols = int.from_bytes(data[0:2], "big")
+    hpx = int.from_bytes(data[2:4], "big")
+    pix = data[4:]
+    grille = [[tuple(pix[(y * cols + x) * 3:(y * cols + x) * 3 + 3]) for x in range(cols)]
+              for y in range(hpx)]
+
+    def encre(c):
+        return abs(c[0] - BG_RGB[0]) + abs(c[1] - BG_RGB[1]) + abs(c[2] - BG_RGB[2]) > 45
+    masque = [[encre(grille[y][x]) for x in range(cols)] for y in range(hpx)]
+    return cols, hpx, grille, masque
+
+
+LOGO_COLS, LOGO_HPX, LOGO, LOGO_MASQUE = _charger_logo()
+LOGO_ROWS = LOGO_HPX // 2
 
 
 def _centrer(texte, visible=None):
@@ -143,15 +155,43 @@ def _centrer(texte, visible=None):
     return " " * max((largeur() - n) // 2, 0) + texte
 
 
+def _marge_logo():
+    return max((largeur() - LOGO_COLS) // 2, 0)
+
+
+def _ajuste(c, fac, x=None, reflet=None, rayon=4):
+    """Luminosité (fac) + reflet quasi blanc autour de la colonne `reflet`."""
+    r, g, b = c
+    if reflet is not None and x is not None:
+        d = abs(x - reflet)
+        if d <= rayon:
+            boost = 1.0 + 0.9 * (1 - d / (rayon + 1))
+            r, g, b = r * boost + 35, g * boost + 35, b * boost + 35
+    return (min(int(r * fac), 255), min(int(g * fac), 255), min(int(b * fac), 255))
+
+
+def _lignes_logo(fac=1.0, reflet=None, rayon=4):
+    """Le logo en lignes de demi-blocs, prêtes à imprimer."""
+    lignes = []
+    for cr in range(LOGO_ROWS):
+        buf, cfg, cbg = [], None, None
+        for x in range(LOGO_COLS):
+            fg = _txt(*_ajuste(LOGO[2 * cr][x], fac, x, reflet, rayon))
+            bg = _fond(*_ajuste(LOGO[2 * cr + 1][x], fac, x, reflet, rayon))
+            if fg != cfg:
+                buf.append(fg); cfg = fg
+            if bg != cbg:
+                buf.append(bg); cbg = bg
+            buf.append("▀")
+        lignes.append("".join(buf) + BASE)
+    return lignes
+
+
 def banniere():
-    degrade = DEGRADE_LOGO
-    n = max(len(l) for l in BANNIERE)
-    for ligne, (r, g, b) in zip(BANNIERE, degrade):
-        _ecrire(BASE + _txt(r, g, b) + GRAS + _centrer(ligne.ljust(n)) + BASE + "\n")
-        _pause(0.07)
-    # ombre portée : la ligne du bas, décalée d'un cran, en bleu sombre → effet relief
-    ombre = " " + BANNIERE[-1].ljust(n)
-    _ecrire(BASE + OMBRE_LOGO + _centrer(ombre.rstrip(), len(ombre)) + BASE + "\n")
+    marge = " " * _marge_logo()
+    for ligne in _lignes_logo():
+        _ecrire(BASE + marge + ligne + "\n")
+        _pause(0.05)
 
 
 def clignoter(texte, couleur=OR, fois=3):
@@ -183,100 +223,94 @@ def _montrer_curseur():
 
 
 def _rendu_grille(grille):
-    """Transforme une grille de (char, couleur) en une image terminal."""
+    """Transforme une grille de (char, fg, bg) en une image terminal."""
     out = ["\x1b[H"]
     for rangee in grille:
         morceaux = [BASE]
-        courant = None
-        for ch, col in rangee:
-            if col != courant:
-                morceaux.append(col or TEXTE)
-                courant = col
+        cfg = cbg = None
+        for ch, fg, bg in rangee:
+            dfg = fg or TEXTE
+            dbg = bg or FOND
+            if dfg != cfg:
+                morceaux.append(dfg); cfg = dfg
+            if dbg != cbg:
+                morceaux.append(dbg); cbg = dbg
             morceaux.append(ch)
         out.append("".join(morceaux) + BASE + "\x1b[K\n")
     return "".join(out)
 
 
 def intro_animee():
-    """Petite cinématique : ciel étoilé scintillant, logo révélé ligne par ligne
-    avec un reflet qui balaie, puis des gouttes qui tombent (effet glace)."""
-    if not ANIMATIONS:
+    """Cinématique : ciel étoilé scintillant, logo glacé révélé par balayage,
+    reflet qui repasse, puis gouttes qui tombent des stalactites."""
+    if not ANIMATIONS or LOGO_COLS == 0:
         return
-    W = min(largeur() - 1, 90)
-    logo = BANNIERE
-    logo_w = max(len(l) for l in logo)
-    gauche = max((W - logo_w) // 2, 0)
-    ciel_h = 8                      # hauteur du ciel étoilé au-dessus du logo
+    W = min(largeur() - 1, max(LOGO_COLS + 4, 80))
+    gauche = max((W - LOGO_COLS) // 2, 0)
+    ciel_h = 7
     haut_logo = ciel_h + 1
-    H = haut_logo + len(logo) + 3
+    H = haut_logo + LOGO_ROWS + 2
 
     rng = random.Random(os.environ.get("BJ_SEED"))
-    etoiles = [(rng.randint(0, W - 1), rng.randint(0, ciel_h),
+    etoiles = [(rng.randint(0, W - 1), rng.randint(0, ciel_h - 1),
                 rng.uniform(0, 6.28), rng.choice("··.*+"))
-               for _ in range(int(W * ciel_h * 0.08))]
-    degrade = DEGRADE_LOGO
+               for _ in range(int(W * ciel_h * 0.09))]
 
+    # pointe basse de chaque colonne encrée (pour faire tomber les gouttes)
+    pointes = []
+    for x in range(LOGO_COLS):
+        for y in range(LOGO_HPX - 1, -1, -1):
+            if LOGO_MASQUE[y][x]:
+                pointes.append((x, y // 2))
+                break
+
+    reveal = (LOGO_COLS + 8) // 3            # fin de la révélation par balayage
+    total = reveal + 42
     gouttes = []
-    frame_gouttes = 8 + 2 * len(logo)
-    total = frame_gouttes + 16
 
     _cacher_curseur()
     try:
         for f in range(total):
-            grille = [[(" ", None) for _ in range(W)] for _ in range(H)]
+            grille = [[(" ", None, None) for _ in range(W)] for _ in range(H)]
 
-            # ciel : chaque étoile scintille selon un sinus décalé
+            # ciel scintillant
             for x, y, phase, ch in etoiles:
                 b = 0.5 + 0.5 * math.sin(f * 0.35 + phase)
-                if b < 0.3:
-                    col = _txt(60, 80, 110)
-                elif b < 0.65:
-                    col = _txt(125, 155, 200)
-                else:
-                    col = _txt(230, 242, 255)
-                grille[y][x] = (ch, col)
+                col = _txt(60, 80, 110) if b < 0.3 else (
+                    _txt(125, 155, 200) if b < 0.65 else _txt(230, 242, 255))
+                grille[y][x] = (ch, col, None)
 
-            # ombre portée du logo : décalée d'un cran, posée avant les lettres
-            revelees = max(0, (f - 8) // 2 + 1) if f >= 8 else 0
-            for i in range(min(revelees, len(logo))):
-                for j, ch in enumerate(logo[i]):
-                    if ch != " " and haut_logo + i + 1 < H and gauche + j + 1 < W:
-                        grille[haut_logo + i + 1][gauche + j + 1] = (ch, OMBRE_LOGO)
+            # logo : colonnes révélées de gauche à droite, reflet au front
+            if f < reveal:
+                jusqua = f * 3
+                reflet = jusqua
+            else:
+                jusqua = LOGO_COLS
+                reflet = (f - reveal) * 6 - 6     # un reflet repasse une fois
 
-            # logo révélé ligne par ligne, avec un large reflet qui balaie
-            balai = (f * 4) % (logo_w + 24) - 12
-            for i in range(min(revelees, len(logo))):
-                r, v, b = degrade[i]
-                base_col = _txt(r, v, b)
-                for j, ch in enumerate(logo[i]):
-                    if ch == " ":
+            for cr in range(LOGO_ROWS):
+                for x in range(min(jusqua + 1, LOGO_COLS)):
+                    if not (LOGO_MASQUE[2 * cr][x] or LOGO_MASQUE[2 * cr + 1][x]):
                         continue
-                    d = abs(j - balai)
-                    if d <= 1:
-                        col = _txt(255, 255, 255)        # cœur du reflet : blanc pur
-                    elif d <= 3:
-                        col = _txt(190, 240, 255)        # halo cyan clair
-                    else:
-                        col = base_col
-                    grille[haut_logo + i][gauche + j] = (ch, col)
+                    fg = _txt(*_ajuste(LOGO[2 * cr][x], 1.0, x, reflet, 4))
+                    bg = _fond(*_ajuste(LOGO[2 * cr + 1][x], 1.0, x, reflet, 4))
+                    grille[haut_logo + cr][gauche + x] = ("▀", fg, bg)
 
-            # gouttes : créées une fois le logo entier affiché, puis elles tombent
-            if f == frame_gouttes:
-                bas = logo[-1]
-                colonnes = [j for j, ch in enumerate(bas) if ch != " "]
-                rng.shuffle(colonnes)
-                gouttes = [[gauche + j, haut_logo + len(logo), rng.randint(2, 3)]
-                           for j in colonnes[:7]]
+            # gouttes qui tombent des stalactites, une fois le logo révélé
+            if f == reveal:
+                choisies = [p for p in pointes if rng.random() < 0.22]
+                gouttes = [[gauche + x, haut_logo + ry + 1, rng.randint(2, 4)]
+                           for x, ry in choisies]
             suivantes = []
             for x, y, vie in gouttes:
                 if 0 <= y < H and 0 <= x < W:
-                    grille[y][x] = ("|" if vie > 1 else ".", _txt(120, 180, 235))
+                    grille[y][x] = ("|" if vie > 1 else ".", _txt(150, 210, 240), None)
                 if vie > 1 and y + 1 < H:
                     suivantes.append([x, y + 1, vie - 1])
             gouttes = suivantes
 
             _ecrire(_rendu_grille(grille))
-            time.sleep(0.055)
+            time.sleep(0.05)
     finally:
         _montrer_curseur()
 
@@ -362,15 +396,12 @@ sur_menu = False           # vrai tant que l'écran du menu est affiché tel que
 _pulse = None
 
 
-def _peindre_titre(facteur):
-    """Repeint les lignes du titre à une luminosité donnée, sans bouger le curseur."""
-    n = max(len(l) for l in BANNIERE)
-    marge = max((largeur() - n) // 2, 0)
+def _peindre_titre(facteur, reflet=None):
+    """Repeint le titre à une luminosité donnée (+ reflet), sans bouger le curseur."""
+    marge = " " * _marge_logo()
     buf = ["\x1b7"]        # sauve la position du curseur (là où l'utilisateur tape)
-    for i, (ligne, (r, g, b)) in enumerate(zip(BANNIERE, DEGRADE_LOGO)):
-        col = _txt(min(int(r * facteur), 255), min(int(g * facteur), 255), min(int(b * facteur), 255))
-        buf.append(f"\x1b[{LIGNE_TITRE + i};1H" + BASE + "\x1b[K"
-                   + " " * marge + col + GRAS + ligne.ljust(n) + BASE)
+    for i, ligne in enumerate(_lignes_logo(facteur, reflet)):
+        buf.append(f"\x1b[{LIGNE_TITRE + i};1H" + BASE + "\x1b[K" + marge + ligne)
     buf.append("\x1b8")    # restaure la position du curseur
     return "".join(buf)
 
@@ -381,12 +412,17 @@ class _Pulsation(threading.Thread):
         self.stop = threading.Event()
 
     def run(self):
-        t = 0.0
+        f = 0
+        sweep = -999                               # dernier déclenchement de reflet
         while not self.stop.is_set():
-            facteur = 0.82 + 0.22 * math.sin(t)   # respire entre ~60 % et ~104 %
-            _ecrire(_peindre_titre(facteur))
-            t += 0.28
-            self.stop.wait(0.08)
+            facteur = 0.84 + 0.16 * math.sin(f * 0.17)     # respiration douce
+            if f - sweep > 75:                     # un reflet repasse toutes les ~6 s
+                sweep = f
+            pos = (f - sweep) * 6
+            reflet = pos if 0 <= pos <= LOGO_COLS else None
+            _ecrire(_peindre_titre(facteur, reflet))
+            f += 1
+            self.stop.wait(0.07)
 
 
 def demarrer_pulsation():
