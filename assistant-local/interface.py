@@ -393,41 +393,81 @@ def _intro_glitch(W, H):
 
 
 def _intro_oeil(W, H):
-    """Un « œil » qui s'ouvre avec les 4 enseignes qui tournent autour d'une
-    pupille (clin d'œil au Sharingan, version Black Jack)."""
+    """Un vrai œil détaillé qui s'ouvre : paupières, iris strié, pupille avec
+    reflet, anneau limbique, et les 4 enseignes-tomoe qui tournent."""
     cx, cy = W // 2, H // 2
-    enseignes = [("♠", _txt(130, 225, 255)), ("♥", _txt(255, 120, 170)),
-                 ("♦", _txt(255, 175, 110)), ("♣", _txt(140, 255, 185))]
-    frames = 30
+    Wx = min(cx - 2, 32)                       # demi-largeur de l'œil (colonnes)
+    Hy = min(cy - 1, 9)                         # demi-hauteur (lignes)
+    if Wx < 6 or Hy < 3:
+        return
+    Ri = Hy                                     # rayon de l'iris (en unités y)
+    Rp = max(int(Ri * 0.4), 1)                  # rayon de la pupille
+    Rt = (Rp + Ri) / 2.0                        # rayon des enseignes-tomoe
+    enseignes = ["♠", "♥", "♦", "♣"]
+    cols_ens = [_txt(170, 235, 255), _txt(255, 130, 180), _txt(255, 185, 125), _txt(160, 255, 195)]
+    frames = 48
     for f in range(frames):
         grille = [[(" ", None, None) for _ in range(W)] for _ in range(H)]
-        ouv = (f + 1) / frames
-        demi = max(int(ouv * (H // 2)), 0)
-        larg = int(ouv * cx)
-        # bords des paupières (haut et bas de l'œil)
-        for x in range(max(cx - larg, 0), min(cx + larg, W)):
-            for yy in (cy - demi, cy + demi):
+        ouv = min((f + 1) / (frames * 0.55), 1.0)       # ouverture sur ~55 % du temps
+        ang = f * 0.33
+        for y in range(max(cy - Hy, 0), min(cy + Hy + 1, H)):
+            dy = y - cy
+            for x in range(max(cx - Wx, 0), min(cx + Wx + 1, W)):
+                ex = x - cx
+                lid = ouv * Hy * math.sqrt(max(0.0, 1 - (ex / Wx) ** 2))   # paupière
+                if abs(dy) > lid + 0.001:
+                    continue
+                dxc = ex / 2.0
+                d = math.hypot(dxc, dy)
+                if d <= Rp:                                   # pupille
+                    if ex < 0 and dy < 0 and d > Rp * 0.35:
+                        grille[y][x] = ("•", _txt(215, 248, 255), None)   # reflet
+                    else:
+                        grille[y][x] = (" ", None, _fond(3, 8, 14))
+                elif d <= Ri:                                 # iris strié
+                    th = math.atan2(dy, dxc)
+                    tex = 0.5 + 0.5 * math.sin(th * 9 + ang * 3 - d)
+                    ch = "▓" if tex > 0.62 else ("▒" if tex > 0.32 else "░")
+                    grille[y][x] = (ch, _txt(int(45 + 35 * tex), int(150 + 75 * tex),
+                                             int(205 + 50 * tex)), None)
+                else:
+                    grille[y][x] = ("·", _txt(35, 75, 90), None)          # coin de l'œil
+        # anneau limbique (bord de l'iris)
+        for a in range(0, 360, 5):
+            th = math.radians(a)
+            x = cx + int(round(math.cos(th) * Ri * 2))
+            y = cy + int(round(math.sin(th) * Ri))
+            if 0 <= x < W and 0 <= y < H and abs(y - cy) <= ouv * Hy * math.sqrt(
+                    max(0.0, 1 - ((x - cx) / Wx) ** 2)) + 0.6:
+                grille[y][x] = ("●", _txt(130, 235, 255), None)
+        # enseignes-tomoe qui tournent, une fois l'œil assez ouvert
+        if ouv >= 0.5:
+            for k in range(4):
+                th = ang + k * math.pi / 2
+                x = cx + int(round(math.cos(th) * Rt * 2))
+                y = cy + int(round(math.sin(th) * Rt))
+                if 0 <= x < W and 0 <= y < H:
+                    grille[y][x] = (enseignes[k], cols_ens[k], None)
+        # paupières (haut et bas) + un soupçon de cils
+        for x in range(max(cx - Wx, 0), min(cx + Wx + 1, W)):
+            lid = ouv * Hy * math.sqrt(max(0.0, 1 - ((x - cx) / Wx) ** 2))
+            for sgn in (-1, 1):
+                yy = cy + int(round(sgn * lid))
                 if 0 <= yy < H:
-                    grille[yy][x] = ("─", _txt(55, 135, 160), None)
-        # emblème : les 4 enseignes tournent sur un cercle qui grandit
-        R = 1.5 + ouv * 5.0
-        ang = f * 0.45
-        for k, (ens, col) in enumerate(enseignes):
-            th = ang + k * math.pi / 2
-            x = cx + int(round(R * math.cos(th) * 2.1))
-            y = cy + int(round(R * math.sin(th)))
-            if cy - demi <= y <= cy + demi and 0 <= x < W and 0 <= y < H:
-                grille[y][x] = (ens, col, None)
-        if demi > 0:                                   # pupille centrale
-            grille[cy][cx] = ("●", _txt(205, 245, 255), None)
+                    grille[yy][x] = ("─", _txt(95, 165, 190), None)
         _ecrire(_rendu_grille(grille))
-        time.sleep(0.04)
-    # clignement : un éclat bref puis noir, avant la pluie
-    grille = [[(" ", None, None) for _ in range(W)] for _ in range(H)]
-    for x in range(W):
-        grille[cy][x] = ("─", _txt(150, 210, 240), None)
-    _ecrire(_rendu_grille(grille))
-    time.sleep(0.05)
+        time.sleep(0.045)
+    # éclat d'activation : l'iris s'illumine une fraction de seconde
+    for inten in (1.0, 0.5):
+        grille = [[(" ", None, None) for _ in range(W)] for _ in range(H)]
+        for y in range(max(cy - Hy, 0), min(cy + Hy + 1, H)):
+            for x in range(max(cx - Wx, 0), min(cx + Wx + 1, W)):
+                ex, dy = x - cx, y - cy
+                if math.hypot(ex / 2.0, dy) <= Ri:
+                    v = int(255 * inten)
+                    grille[y][x] = ("▓", _txt(v, v, 255), None)
+        _ecrire(_rendu_grille(grille))
+        time.sleep(0.05)
 
 
 def intro_animee():
