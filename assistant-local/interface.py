@@ -122,13 +122,29 @@ def distribuer(main):
 
 # ---------- Bannière ----------
 
-BANNIERE = [
-    r" ____  _            _           _            _    ",
-    r"| __ )| | __ _  ___| | __      | | __ _  ___| | __",
-    r"|  _ \| |/ _` |/ __| |/ /   _  | |/ _` |/ __| |/ /",
-    r"| |_) | | (_| | (__|   <   | |_| | (_| | (__|   < ",
-    r"|____/|_|\__,_|\___|_|\_\   \___/ \__,_|\___|_|\_\ ",
-]
+# Alphabet en blocs pleins (5 lignes) : donne un titre épais et glossy.
+_GLYPHES = {
+    "B": ["███ ", "█  █", "███ ", "█  █", "███ "],
+    "L": ["█   ", "█   ", "█   ", "█   ", "████"],
+    "A": [" ██ ", "█  █", "████", "█  █", "█  █"],
+    "C": [" ███", "█   ", "█   ", "█   ", " ███"],
+    "K": ["█  █", "█ █ ", "██  ", "█ █ ", "█  █"],
+    "J": ["████", "   █", "   █", "█  █", " ██ "],
+    " ": ["  ", "  ", "  ", "  ", "  "],
+}
+
+
+def _logo(texte="BLACK JACK"):
+    lignes = ["", "", "", "", ""]
+    for ch in texte:
+        glyphe = _GLYPHES.get(ch, _GLYPHES[" "])
+        for i in range(5):
+            lignes[i] += glyphe[i] + " "
+    largeur_max = max(len(l) for l in lignes)
+    return [l.ljust(largeur_max) for l in lignes]
+
+
+BANNIERE = _logo()
 
 
 # Dégradé du logo : bleu glacé, du plus clair en haut au bleu profond en bas (effet glace).
