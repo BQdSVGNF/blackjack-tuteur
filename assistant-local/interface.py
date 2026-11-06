@@ -305,6 +305,44 @@ def _rendu_grille(grille):
 CARS_PLUIE = "01010110¦:+*=<>/\\!?#$%&01"
 
 
+def _intro_oeil(W, H):
+    """Un « œil » qui s'ouvre avec les 4 enseignes qui tournent autour d'une
+    pupille (clin d'œil au Sharingan, version Black Jack)."""
+    cx, cy = W // 2, H // 2
+    enseignes = [("♠", _txt(130, 225, 255)), ("♥", _txt(255, 120, 170)),
+                 ("♦", _txt(255, 175, 110)), ("♣", _txt(140, 255, 185))]
+    frames = 30
+    for f in range(frames):
+        grille = [[(" ", None, None) for _ in range(W)] for _ in range(H)]
+        ouv = (f + 1) / frames
+        demi = max(int(ouv * (H // 2)), 0)
+        larg = int(ouv * cx)
+        # bords des paupières (haut et bas de l'œil)
+        for x in range(max(cx - larg, 0), min(cx + larg, W)):
+            for yy in (cy - demi, cy + demi):
+                if 0 <= yy < H:
+                    grille[yy][x] = ("─", _txt(55, 135, 160), None)
+        # emblème : les 4 enseignes tournent sur un cercle qui grandit
+        R = 1.5 + ouv * 5.0
+        ang = f * 0.45
+        for k, (ens, col) in enumerate(enseignes):
+            th = ang + k * math.pi / 2
+            x = cx + int(round(R * math.cos(th) * 2.1))
+            y = cy + int(round(R * math.sin(th)))
+            if cy - demi <= y <= cy + demi and 0 <= x < W and 0 <= y < H:
+                grille[y][x] = (ens, col, None)
+        if demi > 0:                                   # pupille centrale
+            grille[cy][cx] = ("●", _txt(205, 245, 255), None)
+        _ecrire(_rendu_grille(grille))
+        time.sleep(0.04)
+    # clignement : un éclat bref puis noir, avant la pluie
+    grille = [[(" ", None, None) for _ in range(W)] for _ in range(H)]
+    for x in range(W):
+        grille[cy][x] = ("─", _txt(150, 210, 240), None)
+    _ecrire(_rendu_grille(grille))
+    time.sleep(0.05)
+
+
 def intro_animee():
     """Pluie de code « Matrix » plein écran, d'où émerge le logo glacé qui
     se révèle par balayage avec un reflet. Effet d'ouverture « wow »."""
@@ -333,6 +371,7 @@ def intro_animee():
 
     _cacher_curseur()
     try:
+        _intro_oeil(W, H)                    # l'« œil » qui s'ouvre + enseignes qui tournent
         for f in range(total):
             grille = [[(" ", None, None) for _ in range(W)] for _ in range(H)]
 
