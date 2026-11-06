@@ -10,20 +10,23 @@ import subprocess
 import sys
 import urllib.request
 
+# L'IA est optionnelle : si le module ne se charge pas (absent, ou bloqué par le
+# Contrôle intelligent des applications de Windows), le programme tourne quand
+# même — tout le visuel, la recherche web et les commandes restent disponibles,
+# seul le chat de l'IA est désactivé.
 try:
     import ollama
-except ImportError:
-    print("Le module 'ollama' manque. Lance : pip install ollama")
-    sys.exit(1)
+except Exception:
+    ollama = None
 
 import interface as ui
 
 try:
     from ddgs import DDGS
-except ImportError:
+except Exception:
     try:
         from duckduckgo_search import DDGS
-    except ImportError:
+    except Exception:
         DDGS = None
 
 MODELE = "black-jack"  # créé à partir du Modelfile
@@ -38,6 +41,9 @@ BLOC_RECHERCHE = re.compile(r"```(?:recherche|search|web)\s*\n(.*?)```", re.DOTA
 # ---------- IA ----------
 
 def demander_ia(historique):
+    if ollama is None:
+        raise RuntimeError("IA désactivée sur cet appareil (module 'ollama' non chargé). "
+                           "Le visuel, la recherche web et les commandes marchent quand même.")
     messages = historique[-MAX_MESSAGES:]  # la personnalité est dans le Modelfile
     reponse = ""
     animation = ui.Animation("Black Jack réfléchit").demarrer()
