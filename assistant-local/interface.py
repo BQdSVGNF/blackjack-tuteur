@@ -147,8 +147,9 @@ def _logo(texte="BLACK JACK"):
 BANNIERE = _logo()
 
 
-# Dégradé du logo : bleu glacé, du plus clair en haut au bleu profond en bas (effet glace).
-DEGRADE_LOGO = [(210, 235, 255), (165, 212, 250), (120, 185, 240), (90, 155, 225), (62, 122, 205)]
+# Dégradé du logo : cyan électrique en haut, bleu profond en bas (effet glace glossy).
+DEGRADE_LOGO = [(235, 252, 255), (135, 232, 255), (70, 195, 255), (65, 140, 248), (80, 95, 225)]
+OMBRE_LOGO = _txt(22, 34, 90)      # ombre portée sombre sous le titre
 
 
 def _centrer(texte, visible=None):
@@ -162,6 +163,9 @@ def banniere():
     for ligne, (r, g, b) in zip(BANNIERE, degrade):
         _ecrire(BASE + _txt(r, g, b) + GRAS + _centrer(ligne.ljust(n)) + BASE + "\n")
         _pause(0.07)
+    # ombre portée : la ligne du bas, décalée d'un cran, en bleu sombre → effet relief
+    ombre = " " + BANNIERE[-1].ljust(n)
+    _ecrire(BASE + OMBRE_LOGO + _centrer(ombre.rstrip(), len(ombre)) + BASE + "\n")
 
 
 def clignoter(texte, couleur=OR, fois=3):
@@ -246,8 +250,14 @@ def intro_animee():
                     col = _txt(230, 242, 255)
                 grille[y][x] = (ch, col)
 
-            # logo révélé ligne par ligne, avec un reflet blanc qui balaie
+            # ombre portée du logo : décalée d'un cran, posée avant les lettres
             revelees = max(0, (f - 8) // 2 + 1) if f >= 8 else 0
+            for i in range(min(revelees, len(logo))):
+                for j, ch in enumerate(logo[i]):
+                    if ch != " " and haut_logo + i + 1 < H and gauche + j + 1 < W:
+                        grille[haut_logo + i + 1][gauche + j + 1] = (ch, OMBRE_LOGO)
+
+            # logo révélé ligne par ligne, avec un large reflet qui balaie
             balai = (f * 4) % (logo_w + 24) - 12
             for i in range(min(revelees, len(logo))):
                 r, v, b = degrade[i]
@@ -255,7 +265,13 @@ def intro_animee():
                 for j, ch in enumerate(logo[i]):
                     if ch == " ":
                         continue
-                    col = _txt(245, 255, 250) if abs(j - balai) <= 1 else base_col
+                    d = abs(j - balai)
+                    if d <= 1:
+                        col = _txt(255, 255, 255)        # cœur du reflet : blanc pur
+                    elif d <= 3:
+                        col = _txt(190, 240, 255)        # halo cyan clair
+                    else:
+                        col = base_col
                     grille[haut_logo + i][gauche + j] = (ch, col)
 
             # gouttes : créées une fois le logo entier affiché, puis elles tombent
