@@ -3,7 +3,9 @@
 Fonctionne dans le cmd de Windows 10/11 (couleurs ANSI 24 bits).
 Mets la variable d'environnement BJ_SANS_ANIMATION=1 pour couper les animations.
 """
+import math
 import os
+import random
 import re
 import shutil
 import sys
@@ -160,6 +162,103 @@ def machine_a_ecrire(texte, couleur=TEXTE, delai=0.012):
     _ecrire(BASE + "\n")
 
 
+# ---------- Intro animée (étoiles + logo qui brille et dégouline) ----------
+
+def _cacher_curseur():
+    _ecrire("\x1b[?25l")
+
+
+def _montrer_curseur():
+    _ecrire("\x1b[?25h")
+
+
+def _rendu_grille(grille):
+    """Transforme une grille de (char, couleur) en une image terminal."""
+    out = ["\x1b[H"]
+    for rangee in grille:
+        morceaux = [BASE]
+        courant = None
+        for ch, col in rangee:
+            if col != courant:
+                morceaux.append(col or TEXTE)
+                courant = col
+            morceaux.append(ch)
+        out.append("".join(morceaux) + BASE + "\x1b[K\n")
+    return "".join(out)
+
+
+def intro_animee():
+    """Petite cinématique : ciel étoilé scintillant, logo révélé ligne par ligne
+    avec un reflet qui balaie, puis des gouttes qui tombent (effet glace)."""
+    if not ANIMATIONS:
+        return
+    W = min(largeur() - 1, 90)
+    logo = BANNIERE
+    logo_w = max(len(l) for l in logo)
+    gauche = max((W - logo_w) // 2, 0)
+    ciel_h = 8                      # hauteur du ciel étoilé au-dessus du logo
+    haut_logo = ciel_h + 1
+    H = haut_logo + len(logo) + 3
+
+    rng = random.Random(os.environ.get("BJ_SEED"))
+    etoiles = [(rng.randint(0, W - 1), rng.randint(0, ciel_h),
+                rng.uniform(0, 6.28), rng.choice("··.*+"))
+               for _ in range(int(W * ciel_h * 0.08))]
+    degrade = [(80, 205, 120), (120, 205, 105), (165, 200, 90), (200, 192, 78), (226, 186, 70)]
+
+    gouttes = []
+    frame_gouttes = 8 + 2 * len(logo)
+    total = frame_gouttes + 16
+
+    _cacher_curseur()
+    try:
+        for f in range(total):
+            grille = [[(" ", None) for _ in range(W)] for _ in range(H)]
+
+            # ciel : chaque étoile scintille selon un sinus décalé
+            for x, y, phase, ch in etoiles:
+                b = 0.5 + 0.5 * math.sin(f * 0.35 + phase)
+                if b < 0.3:
+                    col = _txt(60, 80, 110)
+                elif b < 0.65:
+                    col = _txt(125, 155, 200)
+                else:
+                    col = _txt(230, 242, 255)
+                grille[y][x] = (ch, col)
+
+            # logo révélé ligne par ligne, avec un reflet blanc qui balaie
+            revelees = max(0, (f - 8) // 2 + 1) if f >= 8 else 0
+            balai = (f * 4) % (logo_w + 24) - 12
+            for i in range(min(revelees, len(logo))):
+                r, v, b = degrade[i]
+                base_col = _txt(r, v, b)
+                for j, ch in enumerate(logo[i]):
+                    if ch == " ":
+                        continue
+                    col = _txt(245, 255, 250) if abs(j - balai) <= 1 else base_col
+                    grille[haut_logo + i][gauche + j] = (ch, col)
+
+            # gouttes : créées une fois le logo entier affiché, puis elles tombent
+            if f == frame_gouttes:
+                bas = logo[-1]
+                colonnes = [j for j, ch in enumerate(bas) if ch != " "]
+                rng.shuffle(colonnes)
+                gouttes = [[gauche + j, haut_logo + len(logo), rng.randint(2, 3)]
+                           for j in colonnes[:7]]
+            suivantes = []
+            for x, y, vie in gouttes:
+                if 0 <= y < H and 0 <= x < W:
+                    grille[y][x] = ("|" if vie > 1 else ".", _txt(150, 205, 170))
+                if vie > 1 and y + 1 < H:
+                    suivantes.append([x, y + 1, vie - 1])
+            gouttes = suivantes
+
+            _ecrire(_rendu_grille(grille))
+            time.sleep(0.055)
+    finally:
+        _montrer_curseur()
+
+
 def separateur():
     _ecrire(BASE + DISCRET + "─" * min(largeur() - 1, 90) + BASE + "\n")
 
@@ -236,12 +335,11 @@ def menu(animer=True):
 
 def ecran_accueil(modele):
     initialiser()
+    if ANIMATIONS:
+        intro_animee()           # cinématique : étoiles + logo qui brille et dégouline
+        _ecrire(BASE + "\x1b[2J\x1b[H")
     _ecrire("\n")
-    distribuer([("A", "♠"), ("K", "♥")])
-    _ecrire("\n")
-    clignoter("★  B L A C K J A C K  ★")
-    _ecrire("\n")
-    banniere()
+    banniere()                   # logo posé, écran stabilisé
     _ecrire("\n")
     sous_titre = f"♠ ♥ ♦ ♣   ton IA locale · modèle {modele}   ♣ ♦ ♥ ♠"
     _ecrire(_centrer("", len(sous_titre)))
