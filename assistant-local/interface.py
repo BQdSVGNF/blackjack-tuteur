@@ -122,33 +122,19 @@ def distribuer(main):
 
 # ---------- Bannière ----------
 
-# Alphabet en blocs pleins (5 lignes) : donne un titre épais et glossy.
-_GLYPHES = {
-    "B": ["███ ", "█  █", "███ ", "█  █", "███ "],
-    "L": ["█   ", "█   ", "█   ", "█   ", "████"],
-    "A": [" ██ ", "█  █", "████", "█  █", "█  █"],
-    "C": [" ███", "█   ", "█   ", "█   ", " ███"],
-    "K": ["█  █", "█ █ ", "██  ", "█ █ ", "█  █"],
-    "J": ["████", "   █", "   █", "█  █", " ██ "],
-    " ": ["  ", "  ", "  ", "  ", "  "],
-}
-
-
-def _logo(texte="BLACK JACK"):
-    lignes = ["", "", "", "", ""]
-    for ch in texte:
-        glyphe = _GLYPHES.get(ch, _GLYPHES[" "])
-        for i in range(5):
-            lignes[i] += glyphe[i] + " "
-    largeur_max = max(len(l) for l in lignes)
-    return [l.ljust(largeur_max) for l in lignes]
-
-
-BANNIERE = _logo()
+# Logo "ANSI Shadow" : blocs pleins avec relief, le beau style des outils CLI.
+BANNIERE = [
+    '██████╗ ██╗      █████╗  ██████╗██╗  ██╗         ██╗ █████╗  ██████╗██╗  ██╗',
+    '██╔══██╗██║     ██╔══██╗██╔════╝██║ ██╔╝         ██║██╔══██╗██╔════╝██║ ██╔╝',
+    '██████╔╝██║     ███████║██║     █████╔╝          ██║███████║██║     █████╔╝ ',
+    '██╔══██╗██║     ██╔══██║██║     ██╔═██╗     ██   ██║██╔══██║██║     ██╔═██╗ ',
+    '██████╔╝███████╗██║  ██║╚██████╗██║  ██╗    ╚█████╔╝██║  ██║╚██████╗██║  ██╗',
+    '╚═════╝ ╚══════╝╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝     ╚════╝ ╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝',
+]
 
 
 # Dégradé du logo : cyan électrique en haut, bleu profond en bas (effet glace glossy).
-DEGRADE_LOGO = [(235, 252, 255), (135, 232, 255), (70, 195, 255), (65, 140, 248), (80, 95, 225)]
+DEGRADE_LOGO = [(235, 252, 255), (150, 236, 255), (85, 200, 255), (70, 158, 250), (80, 120, 235), (58, 78, 180)]
 OMBRE_LOGO = _txt(22, 34, 90)      # ombre portée sombre sous le titre
 
 
