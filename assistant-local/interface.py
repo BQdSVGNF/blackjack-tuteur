@@ -294,10 +294,10 @@ def intro_animee():
 
     rng = random.Random(os.environ.get("BJ_SEED"))
     # une goutte de pluie par colonne : [tête (float), vitesse, longueur de traînée]
-    tetes = [[rng.uniform(-H, 0), rng.uniform(0.5, 1.3), rng.randint(5, max(6, H - 2))]
+    tetes = [[rng.uniform(-H, 0), rng.uniform(0.7, 1.9), rng.randint(6, max(7, H - 1))]
              for _ in range(W)]
 
-    R1 = 26                                  # pluie seule
+    R1 = 22                                  # pluie seule
     reveal = LOGO_COLS // 4 + 2              # révélation du logo
     hold = 26                                # logo complet + reflet, la pluie s'efface
     total = R1 + reveal + hold
@@ -319,8 +319,8 @@ def intro_animee():
                 t[0] += t[1]
                 if t[0] - t[2] > H + 1:
                     t[0] = rng.uniform(-H, 0.0)
-                    t[1] = rng.uniform(0.5, 1.3)
-                    t[2] = rng.randint(5, max(6, H - 2))
+                    t[1] = rng.uniform(0.7, 1.9)
+                    t[2] = rng.randint(6, max(7, H - 1))
                 tete_y = int(t[0])
                 for k in range(t[2]):
                     y = tete_y - k
@@ -431,43 +431,85 @@ def menu(animer=True):
     globals()["ANIMATIONS"] = anim
 
 
-# ---------- Titre qui pulse en continu sur le menu ----------
+# ---------- Fond animé du menu : pluie Matrix + titre arc-en-ciel ----------
 
 LIGNE_TITRE = 2            # le logo commence à cette ligne de l'écran du menu
 sur_menu = False           # vrai tant que l'écran du menu est affiché tel quel
 _pulse = None
+_grille_menu = None        # grille (char, fg, bg) de l'écran du menu
+_menu_bas = 0              # nombre de lignes occupées par le menu
+_titre_marge = 0           # marge gauche du logo dans le menu
 
 
-def _peindre_titre_lignes(lignes):
-    """Repeint le titre à partir de lignes déjà prêtes, sans bouger le curseur."""
-    marge = " " * _marge_logo()
-    buf = ["\x1b7"]        # sauve la position du curseur (là où l'utilisateur tape)
-    for i, ligne in enumerate(lignes):
-        buf.append(f"\x1b[{LIGNE_TITRE + i};1H" + BASE + "\x1b[K" + marge + ligne)
-    buf.append("\x1b8")    # restaure la position du curseur
+def _repaint_menu(i_teinte, tetes, f):
+    """Repeint les lignes du menu : pluie dans les cases vides + titre teinté,
+    sans toucher la ligne de saisie ni déplacer le curseur."""
+    W = len(_grille_menu[0])
+    buf = ["\x1b7"]
+    for ry in range(_menu_bas):
+        if 1 <= ry <= LOGO_ROWS:                         # lignes du titre → teinte
+            ligne = _LOGO_TEINTES[i_teinte][ry - 1]
+            buf.append(f"\x1b[{ry + 1};1H" + BASE + "\x1b[K" + " " * _titre_marge + ligne)
+            continue
+        row = _grille_menu[ry]
+        bout = [f"\x1b[{ry + 1};1H" + BASE + "\x1b[K"]
+        cfg = cbg = None
+        for x in range(W):
+            ch, fg, bg = row[x]
+            if ch == " " and fg is None and tetes is not None:   # case vide → pluie ?
+                k = int(tetes[x][0]) - ry
+                if 0 <= k < tetes[x][2]:
+                    ch2 = CARS_PLUIE[(x * 7 + ry * 13 + f) % len(CARS_PLUIE)]
+                    if k == 0:
+                        dfg = _txt(120, 220, 150)
+                    else:
+                        v = 1 - k / tetes[x][2]
+                        dfg = _txt(int(22 + 50 * v), int(60 + 105 * v), int(40 + 65 * v))
+                    dbg = FOND
+                else:
+                    ch2, dfg, dbg = " ", TEXTE, FOND
+            else:
+                ch2, dfg, dbg = ch, (fg or TEXTE), (bg or FOND)
+            if dfg != cfg:
+                bout.append(dfg); cfg = dfg
+            if dbg != cbg:
+                bout.append(dbg); cbg = dbg
+            bout.append(ch2)
+        buf.append("".join(bout))
+    buf.append("\x1b8")
     return "".join(buf)
 
 
 class _Pulsation(threading.Thread):
-    """Fait cycler la teinte du titre à travers tout l'arc-en-ciel (néon)."""
+    """Pluie de code dans le fond du menu + titre qui cycle l'arc-en-ciel néon."""
     def __init__(self):
         super().__init__(daemon=True)
         self.stop = threading.Event()
 
     def run(self):
-        if not _LOGO_TEINTES:
+        if not _LOGO_TEINTES or not _grille_menu:
             return
-        i = 0
-        n = len(_LOGO_TEINTES)
+        W, bas = len(_grille_menu[0]), _menu_bas
+        rng = random.Random()
+        tetes = [[rng.uniform(-bas, 0.0), rng.uniform(0.6, 1.5), rng.randint(4, max(5, bas - 2))]
+                 for _ in range(W)]
+        n, i, f = len(_LOGO_TEINTES), 0, 0
         while not self.stop.is_set():
-            _ecrire(_peindre_titre_lignes(_LOGO_TEINTES[i % n]))
+            for t in tetes:
+                t[0] += t[1]
+                if t[0] - t[2] > bas:
+                    t[0] = rng.uniform(-bas, 0.0)
+                    t[1] = rng.uniform(0.6, 1.5)
+                    t[2] = rng.randint(4, max(5, bas - 2))
+            _ecrire(_repaint_menu(i % n, tetes, f))
             i += 1
+            f += 1
             self.stop.wait(0.09)
 
 
 def demarrer_pulsation():
     global _pulse
-    if ANIMATIONS and _pulse is None:
+    if ANIMATIONS and _pulse is None and _grille_menu:
         _pulse = _Pulsation()
         _pulse.start()
 
@@ -478,25 +520,104 @@ def arreter_pulsation():
         _pulse.stop.set()
         _pulse.join()
         _pulse = None
-        if _LOGO_TEINTES:
-            _ecrire(_peindre_titre_lignes(_LOGO_TEINTES[0]))   # retour à la teinte de base
+        if _grille_menu:
+            _ecrire(_repaint_menu(0, None, 0))   # menu net, sans pluie
+
+
+def _ligne_ansi(rangee):
+    """Rend une ligne de cellules (char, fg, bg) en une chaîne ANSI."""
+    morceaux, cfg, cbg = [BASE], None, None
+    for ch, fg, bg in rangee:
+        dfg, dbg = fg or TEXTE, bg or FOND
+        if dfg != cfg:
+            morceaux.append(dfg); cfg = dfg
+        if dbg != cbg:
+            morceaux.append(dbg); cbg = dbg
+        morceaux.append(ch)
+    return "".join(morceaux)
+
+
+def _boite_cellules(titre, entrees, couleur):
+    """Une boîte encadrée sous forme de cellules (char, fg, bg)."""
+    dedans = LARGEUR_BOITE - 2
+    t = f" {titre} "
+    reste = dedans - len(t)
+    g, d = max(reste // 2, 0), max(reste - reste // 2, 0)
+    rows = [[(ch, couleur, None) for ch in "┌" + "─" * g + t + "─" * d + "┐"]]
+    for num, label in entrees:
+        cells = [(c, OR, None) for c in f" [{num:>2}] "] + [(c, TEXTE, None) for c in label]
+        while len(cells) < dedans:
+            cells.append((" ", None, None))
+        rows.append([("│", couleur, None)] + cells[:dedans] + [("│", couleur, None)])
+    rows.append([(ch, couleur, None) for ch in "└" + "─" * dedans + "┘"])
+    return rows
+
+
+def _composer_menu(modele):
+    """Construit toute la grille de l'écran du menu (title + boîtes + aide)."""
+    taille = shutil.get_terminal_size((100, 30))
+    W = max(min(taille.columns - 1, 118), 2 * LARGEUR_BOITE + 3)
+    marge = max((W - (2 * LARGEUR_BOITE + 3)) // 2, 0)
+    ml = max((W - LOGO_COLS) // 2, 0)
+    sections = [
+        ("♠ TABLE — L'IA", [("1", "Discuter (tape ton message)"), ("2", "Recherche web sourcée"),
+                            ("3", "CODEX — coder (C++, Python, web…)"),
+                            ("4", "Nouvelle partie (efface la mémoire)")], VERT),
+        ("♥ STRATÉGIE BLACKJACK", [("5", "Stratégie de base"), ("6", "Apprendre à compter (Hi-Lo)"),
+                                   ("7", "Quiz : que faire ?")], ROUGE),
+        ("♦ SYSTÈME — ma machine", [("8", "Infos système"), ("9", "Espace disque"),
+                                    ("10", "Lancer un programme")], OR),
+        ("♣ RÉSEAU — ma connexion", [("11", "Mon adresse IP"), ("12", "Tester ma connexion (ping)"),
+                                     ("13", "Mes connexions actives")], CYAN),
+    ]
+    boites = [_boite_cellules(*s) for s in sections]
+    lignes = []
+
+    def at(r):
+        while len(lignes) <= r:
+            lignes.append([[" ", None, None] for _ in range(W)])
+        return lignes[r]
+
+    def texte(r, col, s, couleur):
+        row = at(r)
+        for i, ch in enumerate(s):
+            if 0 <= col + i < W:
+                row[col + i] = [ch, couleur, None]
+
+    def poser(rtop, col, boite):
+        for i, brow in enumerate(boite):
+            row = at(rtop + i)
+            for j, cell in enumerate(brow):
+                row[col + j] = list(cell)
+
+    for cr in range(LOGO_ROWS):                       # titre (teinte de base)
+        row = at(1 + cr)
+        for x in range(LOGO_COLS):
+            row[ml + x] = ["▀", _txt(*LOGO[2 * cr][x]), _fond(*LOGO[2 * cr + 1][x])]
+    sous = f"▓▒░  IA locale · {modele} · hors-ligne · chiffré  ░▒▓"
+    texte(LOGO_ROWS + 3, max((W - len(sous)) // 2, 0), sous, DISCRET)
+    r1 = LOGO_ROWS + 5
+    poser(r1, marge, boites[0]); poser(r1, marge + LARGEUR_BOITE + 3, boites[1])
+    r2 = r1 + max(len(boites[0]), len(boites[1])) + 1
+    poser(r2, marge, boites[2]); poser(r2, marge + LARGEUR_BOITE + 3, boites[3])
+    rh = r2 + max(len(boites[2]), len(boites[3])) + 1
+    texte(rh, 3, "Tape un numéro, un message, menu pour revoir ceci, ou exit pour quitter.", DISCRET)
+    texte(rh + 1, 0, "─" * min(W - 1, 90), DISCRET)
+    bas = rh + 2
+    while len(lignes) < bas:
+        at(bas - 1)
+    return lignes[:bas], bas, ml
 
 
 def afficher_menu(modele):
-    """Pose l'écran du menu (titre en haut), prêt à pulser."""
-    global sur_menu
-    _ecrire(BASE + "\x1b[2J\x1b[H\n")
-    banniere()                   # logo au repos, à partir de LIGNE_TITRE
-    _ecrire("\n")
-    sous_titre = f"▓▒░  IA locale · {modele} · hors-ligne · chiffré  ░▒▓"
-    _ecrire(_centrer("", len(sous_titre)))
-    machine_a_ecrire(sous_titre, DISCRET, 0.006)
-    _ecrire("\n")
-    menu()
-    indice = (f"   {DISCRET}Tape un {OR}numéro{DISCRET}, un {OR}message{DISCRET}, "
-              f"{OR}menu{DISCRET} pour revoir ceci, ou {OR}exit{DISCRET} pour quitter.{BASE}")
-    _ecrire(indice + "\n")
-    separateur()
+    """Compose et pose l'écran du menu (titre en haut), prêt pour le fond animé."""
+    global sur_menu, _grille_menu, _menu_bas, _titre_marge
+    grille, bas, ml = _composer_menu(modele)
+    _grille_menu, _menu_bas, _titre_marge = grille, bas, ml
+    out = [BASE + "\x1b[2J\x1b[H"]
+    for row in grille:
+        out.append(_ligne_ansi(row) + "\x1b[K\n")
+    _ecrire("".join(out))
     sur_menu = True
 
 
