@@ -547,7 +547,7 @@ def _boite_cellules(titre, entrees, couleur):
     for num, label in entrees:
         cells = [(c, OR, None) for c in f" [{num:>2}] "] + [(c, TEXTE, None) for c in label]
         while len(cells) < dedans:
-            cells.append((" ", None, None))
+            cells.append((" ", "", None))      # "" = occupé (pas de pluie), mais rendu vide
         rows.append([("│", couleur, None)] + cells[:dedans] + [("│", couleur, None)])
     rows.append([(ch, couleur, None) for ch in "└" + "─" * dedans + "┘"])
     return rows
