@@ -5,23 +5,19 @@ cd /d "%~dp0"
 
 rem ============================================================
 rem  APERCU : montre tout le visuel de Black Jack (intro, logo,
-rem  menu, recherche web, commandes systeme) SANS installer
-rem  Ollama ni le modele. Le chat de l'IA, lui, repondra seulement
-rem  si Ollama tourne (voir lancer_ia.bat pour la version complete).
+rem  menu, commandes systeme). N'exige RIEN a installer.
+rem  Le chat de l'IA ne repond que si Ollama tourne ; la
+rem  recherche web marche en plus si le module ddgs est installe
+rem  (python -m pip install ddgs), mais ce n'est pas obligatoire.
 rem
-rem  >>> Ouvre ce fichier dans TERMINAL WINDOWS pour les belles
-rem      couleurs. Dans le vieux cmd noir, le logo sera moche.
+rem  >>> Ouvre de preference TERMINAL WINDOWS pour les couleurs.
+rem      Si Windows bloque ce .bat, lance a la place :  python ia.py
 rem ============================================================
 
 where python >nul 2>nul || (
     echo Python introuvable. Installe-le depuis https://www.python.org
     echo IMPORTANT : pendant l'installation, coche "Add python.exe to PATH".
     pause & exit /b 1
-)
-
-python -c "import ollama, ddgs" 2>nul || (
-    echo Installation des petits modules Python ^(une seule fois^)...
-    python -m pip install --quiet ollama ddgs
 )
 
 cls

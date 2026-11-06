@@ -5,21 +5,18 @@
 - Commandes : /web <question> force une recherche, reset efface la mémoire, exit quitte.
 """
 import html
+import json
 import re
 import subprocess
 import sys
+import urllib.error
 import urllib.request
 
-# L'IA est optionnelle : si le module ne se charge pas (absent, ou bloqué par le
-# Contrôle intelligent des applications de Windows), le programme tourne quand
-# même — tout le visuel, la recherche web et les commandes restent disponibles,
-# seul le chat de l'IA est désactivé.
-try:
-    import ollama
-except Exception:
-    ollama = None
-
 import interface as ui
+
+# On parle à Ollama par son API HTTP locale (pas de module à installer, donc
+# rien que le « Contrôle intelligent des applications » de Windows puisse bloquer).
+OLLAMA_URL = "http://localhost:11434/api/chat"
 
 try:
     from ddgs import DDGS
@@ -41,21 +38,38 @@ BLOC_RECHERCHE = re.compile(r"```(?:recherche|search|web)\s*\n(.*?)```", re.DOTA
 # ---------- IA ----------
 
 def demander_ia(historique):
-    if ollama is None:
-        raise RuntimeError("IA désactivée sur cet appareil (module 'ollama' non chargé). "
-                           "Le visuel, la recherche web et les commandes marchent quand même.")
-    messages = historique[-MAX_MESSAGES:]  # la personnalité est dans le Modelfile
+    corps = json.dumps({
+        "model": MODELE,
+        "messages": historique[-MAX_MESSAGES:],   # la personnalité est dans le Modelfile
+        "stream": True,
+        "keep_alive": "30m",
+    }).encode("utf-8")
+    requete = urllib.request.Request(OLLAMA_URL, data=corps,
+                                     headers={"Content-Type": "application/json"})
     reponse = ""
     animation = ui.Animation("Black Jack réfléchit").demarrer()
     try:
-        for morceau in ollama.chat(model=MODELE, messages=messages, stream=True, keep_alive="30m"):
-            texte = morceau["message"]["content"]
-            if animation:  # premier morceau reçu : on arrête l'animation et on affiche
-                animation.arreter()
-                animation = None
-                ui.etiquette_ia()
-            ui.morceau_ia(texte)
-            reponse += texte
+        with urllib.request.urlopen(requete, timeout=120) as flux:
+            for ligne in flux:                     # Ollama renvoie un JSON par ligne
+                ligne = ligne.strip()
+                if not ligne:
+                    continue
+                bloc = json.loads(ligne)
+                texte = bloc.get("message", {}).get("content", "")
+                if texte:
+                    if animation:                  # 1er morceau : on arrête l'animation
+                        animation.arreter()
+                        animation = None
+                        ui.etiquette_ia()
+                    ui.morceau_ia(texte)
+                    reponse += texte
+                if bloc.get("done"):
+                    break
+    except urllib.error.URLError as e:
+        if animation:
+            animation.arreter()
+        raise RuntimeError(f"Ollama injoignable ({getattr(e, 'reason', e)}). "
+                           "Lance Ollama (ou c'est normal s'il n'est pas installé sur cet appareil).")
     finally:
         if animation:
             animation.arreter()
