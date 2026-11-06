@@ -53,8 +53,8 @@ def jouer_musique():
     if not os.path.exists(chemin):
         return
     try:
-        import winsound
-        winsound.PlaySound(chemin, winsound.SND_FILENAME | winsound.SND_ASYNC | winsound.SND_LOOP)
+        import winsound                              # une seule fois (pas de boucle)
+        winsound.PlaySound(chemin, winsound.SND_FILENAME | winsound.SND_ASYNC)
     except Exception:
         pass
 
