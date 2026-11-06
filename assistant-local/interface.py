@@ -305,6 +305,55 @@ def _rendu_grille(grille):
 CARS_PLUIE = "01010110¦:+*=<>/\\!?#$%&01"
 
 
+try:
+    from mots_glitch import MOTS as _MOTS_GLITCH
+except Exception:
+    _MOTS_GLITCH = []
+
+_GLITCH_GARBAGE = "!<>/\\#%&01=?*¦:+"
+
+
+def _intro_glitch(W, H):
+    """Séquence de mots « hacker » qui flashent avec un effet glitch
+    (aberration chromatique, caractères corrompus, scanlines)."""
+    if not _MOTS_GLITCH:
+        return
+    couleurs = [VERT, CYAN, OR, MAGENTA]
+    cy0 = H // 2
+    for idx, (mot, art) in enumerate(_MOTS_GLITCH):
+        h = len(art)
+        w = max(len(l) for l in art)
+        top = max(cy0 - h // 2, 0)
+        gauche = max((W - w) // 2, 0)
+        couleur = couleurs[idx % len(couleurs)]
+        for fr in range(9):
+            grille = [[(" ", None, None) for _ in range(W)] for _ in range(H)]
+            glitchy = fr < 2 or random.random() < 0.35
+            dx = random.choice((-2, -1, 1, 2)) if glitchy else 0
+            for i, ligne in enumerate(art):
+                y = top + i
+                if not (0 <= y < H):
+                    continue
+                for j, ch in enumerate(ligne):
+                    if ch == " ":
+                        continue
+                    c = random.choice(_GLITCH_GARBAGE) if (glitchy and random.random() < 0.12) else ch
+                    x = gauche + j
+                    if glitchy and 0 <= x + dx < W:            # aberration chromatique
+                        grille[y][x + dx] = (c, CYAN if dx < 0 else MAGENTA, None)
+                    if 0 <= x < W:
+                        grille[y][x] = (c, couleur, None)
+            if random.random() < 0.5:                          # scanline
+                yy = random.randint(0, H - 1)
+                for x in range(0, W, 2):
+                    if grille[yy][x][0] == " ":
+                        grille[yy][x] = ("─", _txt(40, 90, 80), None)
+            _ecrire(_rendu_grille(grille))
+            time.sleep(0.045)
+        _ecrire(_rendu_grille([[(" ", None, None) for _ in range(W)] for _ in range(H)]))
+        time.sleep(0.04)
+
+
 def _intro_oeil(W, H):
     """Un « œil » qui s'ouvre avec les 4 enseignes qui tournent autour d'une
     pupille (clin d'œil au Sharingan, version Black Jack)."""
@@ -372,6 +421,7 @@ def intro_animee():
     _cacher_curseur()
     try:
         _intro_oeil(W, H)                    # l'« œil » qui s'ouvre + enseignes qui tournent
+        _intro_glitch(W, H)                  # mots « hacker » qui flashent (glitch)
         for f in range(total):
             grille = [[(" ", None, None) for _ in range(W)] for _ in range(H)]
 
