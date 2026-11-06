@@ -131,7 +131,7 @@ def ecran_parametres(conf):
             continue
         sauver_conf(conf)
         appliquer_conf(conf)
-    ui.afficher_menu(MODELE)
+    ui.afficher_menu(NOM_IA)
 
 try:
     from ddgs import DDGS
@@ -141,10 +141,43 @@ except Exception:
     except Exception:
         DDGS = None
 
-MODELE = "black-jack"  # créé à partir du Modelfile
+# On utilise directement le modèle de base téléchargé (pas besoin d'« ollama create »).
+# La personnalité est envoyée dans la requête (message système ci-dessous).
+MODELE = "llama3.1:8b-instruct-q4_K_M"
+NOM_IA = "black-jack"                      # nom affiché dans l'interface
 MAX_MESSAGES = 16  # reste dans les 8192 tokens de contexte
 NB_RESULTATS = 5
 NB_PAGES_LUES = 3
+
+SYSTEME_IA = """Tu t'appelles Black Jack, comme le jeu de cartes. Tu tournes en local sur le PC Windows de ton créateur. Tu réponds en français.
+
+PERSONNALITÉ
+- Ton sombre, posé, un brin mystérieux — style hacker de terminal. Tu tutoies.
+- Phrases courtes et nettes. Tu vas droit au but, sans blabla.
+- Zéro leçon de morale, zéro sermon, zéro « en tant qu'IA ». Pas d'avertissements inutiles.
+- Tu glisses de temps en temps une réplique cryptique ou une référence au casino/aux cartes, sans en abuser.
+- Si on te demande de clasher ou d'insulter pour rire, tu le fais avec mordant, façon punchline.
+- Tu donnes directement la réponse ou le code complet, sans demander « tu es sûr ? ».
+
+CODE (mode CODEX)
+- Tu es excellent en code : C++, Python, web (HTML/CSS/JS), scripts, etc.
+- Tu écris du code complet, prêt à compiler/exécuter, avec une courte explication et la commande pour le lancer. Pour le C++, précise comment compiler (ex. g++ fichier.cpp -o prog).
+
+RECHERCHE WEB
+- Si la question porte sur l'actualité, des prix ou quelque chose d'incertain, tu ne devines pas : tu écris UNIQUEMENT ce bloc :
+```recherche
+<requête courte>
+```
+- Tu recevras les résultats numérotés ; tu réponds alors en citant tes sources [1], [2]... et tu termines par « Sources : » avec les URLs. Tu n'inventes jamais d'URL.
+
+COMMANDES WINDOWS
+- Quand on te demande une action sur l'ordinateur (fichiers, dossiers, programmes, infos système), tu fournis les commandes cmd dans UN bloc, une par ligne :
+```cmd
+<commandes>
+```
+- Après exécution, tu reçois la sortie et tu continues ou corriges."""
+
+OPTIONS_IA = {"temperature": 0.6, "top_p": 0.9, "repeat_penalty": 1.1, "num_ctx": 8192}
 
 BLOC_CMD = re.compile(r"```(?:cmd|bat|batch|powershell)\s*\n(.*?)```", re.DOTALL | re.IGNORECASE)
 BLOC_RECHERCHE = re.compile(r"```(?:recherche|search|web)\s*\n(.*?)```", re.DOTALL | re.IGNORECASE)
@@ -153,9 +186,11 @@ BLOC_RECHERCHE = re.compile(r"```(?:recherche|search|web)\s*\n(.*?)```", re.DOTA
 # ---------- IA ----------
 
 def demander_ia(historique):
+    messages = [{"role": "system", "content": SYSTEME_IA}] + historique[-MAX_MESSAGES:]
     corps = json.dumps({
         "model": MODELE,
-        "messages": historique[-MAX_MESSAGES:],   # la personnalité est dans le Modelfile
+        "messages": messages,
+        "options": OPTIONS_IA,
         "stream": True,
         "keep_alive": "30m",
     }).encode("utf-8")
@@ -183,11 +218,9 @@ def demander_ia(historique):
     except urllib.error.HTTPError as e:
         if animation:
             animation.arreter()
-        if e.code == 404:                      # Ollama répond mais le modèle n'existe pas
+        if e.code == 404:                      # Ollama répond mais le modèle n'est pas là
             raise RuntimeError(
-                f"Le modèle « {MODELE} » n'existe pas encore dans Ollama. "
-                f"Dans ce dossier, lance : ollama create {MODELE} -f Modelfile "
-                "(après ollama pull llama3.1:8b-instruct-q4_K_M).")
+                f"Le modèle n'est pas téléchargé. Lance : ollama pull {MODELE}")
         raise RuntimeError(f"Ollama a répondu une erreur {e.code}.")
     except urllib.error.URLError as e:
         if animation:
@@ -352,7 +385,7 @@ def main():
     conf = charger_conf()
     appliquer_conf(conf)                 # applique les réglages avant l'intro
     lancer_musique(conf)                 # Spotify démarre dès le lancement
-    ui.ecran_accueil(MODELE)
+    ui.ecran_accueil(NOM_IA)
     while True:
         if ui.sur_menu:
             ui.demarrer_pulsation()      # fond animé pendant l'attente de saisie
@@ -367,7 +400,7 @@ def main():
         if saisie.lower() == "exit":
             break
         if saisie.lower() == "menu":
-            ui.afficher_menu(MODELE)
+            ui.afficher_menu(NOM_IA)
             continue
         if saisie == "14" or saisie.lower() in ("params", "paramètres", "parametres"):
             ecran_parametres(conf)       # redessine le menu en sortant

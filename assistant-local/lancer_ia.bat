@@ -45,12 +45,9 @@ echo Démarrage d'Ollama...
 timeout /t 1 /nobreak >nul
 ollama list >nul 2>nul || goto attente
 
-rem Télécharge la base la première fois (environ 4,9 Go)
-ollama list | find /i "%BASE%" >nul || ollama pull %BASE%
-
-rem Crée (ou met à jour) ton modèle à partir du Modelfile
+rem Télécharge le modèle la première fois (environ 4,9 Go)
 echo Préparation de la table Black Jack...
-ollama create black-jack -f Modelfile >nul || (echo Échec de la création du modèle. & pause & exit /b 1)
+ollama list | find /i "%BASE%" >nul || ollama pull %BASE%
 
 cls
 python ia.py
