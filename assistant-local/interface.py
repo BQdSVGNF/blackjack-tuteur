@@ -467,82 +467,94 @@ def _intro_glitch(W, H):
 
 
 def _intro_oeil(W, H):
-    """Un vrai œil détaillé qui s'ouvre : paupières, iris strié, pupille avec
-    reflet, anneau limbique, et les 4 enseignes-tomoe qui tournent."""
+    """Un œil réaliste : blanc de l'œil, iris bleu à fibres, pupille noire,
+    reflet lumineux. Il cligne, s'ouvre, puis REGARDE autour (vivant)."""
     cx, cy = W // 2, H // 2
-    Wx = min(cx - 2, 32)                       # demi-largeur de l'œil (colonnes)
+    Wx = min(cx - 2, 34)                        # demi-largeur de l'œil (colonnes)
     Hy = min(cy - 1, 9)                         # demi-hauteur (lignes)
-    if Wx < 6 or Hy < 3:
+    if Wx < 8 or Hy < 3:
         return
-    Ri = Hy                                     # rayon de l'iris (en unités y)
-    Rp = max(int(Ri * 0.4), 1)                  # rayon de la pupille
-    Rt = (Rp + Ri) / 2.0                        # rayon des enseignes-tomoe
-    enseignes = ["♠", "♥", "♦", "♣"]
-    cols_ens = [_txt(170, 235, 255), _txt(255, 130, 180), _txt(255, 185, 125), _txt(160, 255, 195)]
+    Ri = Hy - 0.5                               # rayon de l'iris (unités y)
+    Rp0 = Ri * 0.42                             # rayon de pupille au repos
+    amp_x = max(Wx - Ri * 2 - 2, 2)            # amplitude du regard (colonnes)
+    amp_y = max(Hy - Ri - 1, 1)
 
-    # courbe d'ouverture : deux clignements rapides, puis ouverture complète
-    cles = [(0.0, 0.0), (0.09, 0.55), (0.15, 0.06), (0.23, 0.60), (0.30, 0.05),
-            (0.60, 1.0), (1.0, 1.0)]
+    def paup(ex, ouv):                          # demi-hauteur de l'œil (amande) à la colonne ex
+        return ouv * Hy * (max(0.0, 1 - (ex / Wx) ** 2)) ** 0.72
 
-    def _ouverture(t):
-        for i in range(len(cles) - 1):
-            t0, v0 = cles[i]
-            t1, v1 = cles[i + 1]
+    # ouverture : deux clignements, puis grand ouvert ; + un clignement au milieu
+    cles = [(0.0, 0.0), (0.07, 0.5), (0.12, 0.05), (0.19, 0.55), (0.25, 0.05),
+            (0.40, 1.0), (0.62, 1.0), (0.66, 0.12), (0.70, 1.0), (1.0, 1.0)]
+
+    def interp(t, ks):
+        for i in range(len(ks) - 1):
+            (t0, v0), (t1, v1) = ks[i], ks[i + 1]
             if t <= t1:
                 k = (t - t0) / (t1 - t0) if t1 > t0 else 1.0
                 return v0 + (v1 - v0) * k
-        return cles[-1][1]
+        return ks[-1][1]
 
-    frames = 58
+    frames = 66
     for f in range(frames):
+        t = f / (frames - 1)
+        ouv = interp(t, cles)
+        # le regard balaie (droite, gauche, bas) quand l'œil est ouvert
+        look = max(0.0, min((t - 0.30) / 0.55, 1.0))
+        gx = amp_x * math.sin(t * 7.0) * look
+        gy = amp_y * math.sin(t * 4.3 + 1) * look * 0.7
+        if t > 0.9:                              # recentre le regard à la fin
+            gx *= (1 - t) / 0.1
+            gy *= (1 - t) / 0.1
+        Rp = Rp0 * (1 + 0.12 * math.sin(f * 0.4))    # légère dilatation
         grille = [[(" ", None, None) for _ in range(W)] for _ in range(H)]
-        ouv = _ouverture(f / (frames - 1))              # cligne puis s'ouvre en grand
-        ang = f * 0.33
-        for y in range(max(cy - Hy, 0), min(cy + Hy + 1, H)):
+        for y in range(max(cy - Hy - 1, 0), min(cy + Hy + 2, H)):
             dy = y - cy
             for x in range(max(cx - Wx, 0), min(cx + Wx + 1, W)):
                 ex = x - cx
-                lid = ouv * Hy * math.sqrt(max(0.0, 1 - (ex / Wx) ** 2))   # paupière
+                lid = paup(ex, ouv)
                 if abs(dy) > lid + 0.001:
                     continue
-                dxc = ex / 2.0
-                d = math.hypot(dxc, dy)
-                if d <= Rp:                                   # pupille
-                    if ex < 0 and dy < 0 and d > Rp * 0.35:
-                        grille[y][x] = ("•", _txt(215, 248, 255), None)   # reflet
+                dxc = (x - (cx + gx)) / 2.0           # repère centré sur le regard
+                dyc = (y - (cy + gy))
+                r = math.hypot(dxc, dyc)
+                haut = dy < -lid * 0.45              # zone sous la paupière haute (ombre)
+                if r <= Rp:                           # pupille (noire)
+                    grille[y][x] = (" ", None, _fond(2, 4, 8))
+                elif r <= Ri:                         # iris bleu à fibres
+                    th = math.atan2(dyc, dxc)
+                    fib = 0.5 + 0.5 * math.sin(th * 16 + r * 0.7)
+                    bord = r / Ri
+                    if bord > 0.9:                    # anneau limbique sombre
+                        col = (20, 45, 85)
                     else:
-                        grille[y][x] = (" ", None, _fond(3, 8, 14))
-                elif d <= Ri:                                 # iris strié
-                    th = math.atan2(dy, dxc)
-                    tex = 0.5 + 0.5 * math.sin(th * 9 + ang * 3 - d)
-                    ch = "▓" if tex > 0.62 else ("▒" if tex > 0.32 else "░")
-                    grille[y][x] = (ch, _txt(int(45 + 35 * tex), int(150 + 75 * tex),
-                                             int(205 + 50 * tex)), None)
-                else:
-                    grille[y][x] = ("·", _txt(35, 75, 90), None)          # coin de l'œil
-        # anneau limbique (bord de l'iris)
-        for a in range(0, 360, 5):
-            th = math.radians(a)
-            x = cx + int(round(math.cos(th) * Ri * 2))
-            y = cy + int(round(math.sin(th) * Ri))
-            if 0 <= x < W and 0 <= y < H and abs(y - cy) <= ouv * Hy * math.sqrt(
-                    max(0.0, 1 - ((x - cx) / Wx) ** 2)) + 0.6:
-                grille[y][x] = ("●", _txt(130, 235, 255), None)
-        # enseignes-tomoe qui tournent, une fois l'œil assez ouvert
-        if ouv >= 0.5:
-            for k in range(4):
-                th = ang + k * math.pi / 2
-                x = cx + int(round(math.cos(th) * Rt * 2))
-                y = cy + int(round(math.sin(th) * Rt))
-                if 0 <= x < W and 0 <= y < H:
-                    grille[y][x] = (enseignes[k], cols_ens[k], None)
-        # paupières (haut et bas) + un soupçon de cils
+                        base = 1 - 0.35 * bord
+                        col = (int((45 + 45 * fib) * base), int((135 + 70 * fib) * base),
+                               int((215 + 40 * fib) * base))
+                    if haut:
+                        col = tuple(int(c * 0.72) for c in col)
+                    ch = "▓" if fib > 0.6 else ("▒" if fib > 0.3 else "░")
+                    grille[y][x] = (ch, _txt(*col), None)
+                else:                                 # blanc de l'œil (sclère)
+                    v = 150 if haut else 212          # ombre de la paupière haute
+                    coin = abs(ex) > Wx * 0.82
+                    col = (200, 150, 150) if coin else (v, v + 8, v + 16)
+                    grille[y][x] = ("░" if coin else "▓", _txt(*col), None)
+        # reflet spéculaire (lumière fixe, en haut à gauche de l'iris)
+        hx = int(cx + gx - Ri * 0.9)
+        hy = int(cy + gy - Ri * 0.5)
+        for ax, ay in ((0, 0), (1, 0), (0, 1)):
+            x, y = hx + ax, hy + ay
+            if 0 <= x < W and 0 <= y < H and abs(y - cy) <= paup(x - cx, ouv):
+                grille[y][x] = ("█", _txt(250, 252, 255), None)
+        # paupières (traits) + cils
         for x in range(max(cx - Wx, 0), min(cx + Wx + 1, W)):
-            lid = ouv * Hy * math.sqrt(max(0.0, 1 - ((x - cx) / Wx) ** 2))
+            lid = paup(x - cx, ouv)
+            if lid < 0.3:
+                continue
             for sgn in (-1, 1):
                 yy = cy + int(round(sgn * lid))
                 if 0 <= yy < H:
-                    grille[yy][x] = ("─", _txt(95, 165, 190), None)
+                    grille[yy][x] = ("▄" if sgn < 0 else "▀", _txt(120, 90, 80), None)
         _ecrire(_rendu_grille(grille))
         time.sleep(0.045)
     # éclat d'activation : l'iris s'illumine une fraction de seconde
@@ -550,8 +562,7 @@ def _intro_oeil(W, H):
         grille = [[(" ", None, None) for _ in range(W)] for _ in range(H)]
         for y in range(max(cy - Hy, 0), min(cy + Hy + 1, H)):
             for x in range(max(cx - Wx, 0), min(cx + Wx + 1, W)):
-                ex, dy = x - cx, y - cy
-                if math.hypot(ex / 2.0, dy) <= Ri:
+                if math.hypot((x - cx) / 2.0, y - cy) <= Ri:
                     v = int(255 * inten)
                     grille[y][x] = ("▓", _txt(v, v, 255), None)
         _ecrire(_rendu_grille(grille))
