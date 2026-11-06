@@ -369,13 +369,61 @@ def menu(animer=True):
     globals()["ANIMATIONS"] = anim
 
 
-def ecran_accueil(modele):
-    initialiser()
-    if ANIMATIONS:
-        intro_animee()           # cinématique : étoiles + logo qui brille et dégouline
-        _ecrire(BASE + "\x1b[2J\x1b[H")
-    _ecrire("\n")
-    banniere()                   # logo posé, écran stabilisé
+# ---------- Titre qui pulse en continu sur le menu ----------
+
+LIGNE_TITRE = 2            # le logo commence à cette ligne de l'écran du menu
+sur_menu = False           # vrai tant que l'écran du menu est affiché tel quel
+_pulse = None
+
+
+def _peindre_titre(facteur):
+    """Repeint les lignes du titre à une luminosité donnée, sans bouger le curseur."""
+    n = max(len(l) for l in BANNIERE)
+    marge = max((largeur() - n) // 2, 0)
+    buf = ["\x1b7"]        # sauve la position du curseur (là où l'utilisateur tape)
+    for i, (ligne, (r, g, b)) in enumerate(zip(BANNIERE, DEGRADE_LOGO)):
+        col = _txt(min(int(r * facteur), 255), min(int(g * facteur), 255), min(int(b * facteur), 255))
+        buf.append(f"\x1b[{LIGNE_TITRE + i};1H" + BASE + "\x1b[K"
+                   + " " * marge + col + GRAS + ligne.ljust(n) + BASE)
+    buf.append("\x1b8")    # restaure la position du curseur
+    return "".join(buf)
+
+
+class _Pulsation(threading.Thread):
+    def __init__(self):
+        super().__init__(daemon=True)
+        self.stop = threading.Event()
+
+    def run(self):
+        t = 0.0
+        while not self.stop.is_set():
+            facteur = 0.82 + 0.22 * math.sin(t)   # respire entre ~60 % et ~104 %
+            _ecrire(_peindre_titre(facteur))
+            t += 0.28
+            self.stop.wait(0.08)
+
+
+def demarrer_pulsation():
+    global _pulse
+    if ANIMATIONS and _pulse is None:
+        _pulse = _Pulsation()
+        _pulse.start()
+
+
+def arreter_pulsation():
+    global _pulse
+    if _pulse is not None:
+        _pulse.stop.set()
+        _pulse.join()
+        _pulse = None
+        _ecrire(_peindre_titre(1.0))   # titre net, pleine luminosité
+
+
+def afficher_menu(modele):
+    """Pose l'écran du menu (titre en haut), prêt à pulser."""
+    global sur_menu
+    _ecrire(BASE + "\x1b[2J\x1b[H\n")
+    banniere()                   # logo au repos, à partir de LIGNE_TITRE
     _ecrire("\n")
     sous_titre = f"♠ ♥ ♦ ♣   ton IA locale · modèle {modele}   ♣ ♦ ♥ ♠"
     _ecrire(_centrer("", len(sous_titre)))
@@ -386,6 +434,14 @@ def ecran_accueil(modele):
               f"{OR}menu{DISCRET} pour revoir ceci, ou {OR}exit{DISCRET} pour quitter.{BASE}")
     _ecrire(indice + "\n")
     separateur()
+    sur_menu = True
+
+
+def ecran_accueil(modele):
+    initialiser()
+    if ANIMATIONS:
+        intro_animee()           # cinématique : étoiles + logo qui brille et dégouline
+    afficher_menu(modele)
 
 
 def ecran_sortie():

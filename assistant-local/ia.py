@@ -205,22 +205,27 @@ def main():
     historique = []
     ui.ecran_accueil(MODELE)
     while True:
+        if ui.sur_menu:
+            ui.demarrer_pulsation()      # le titre respire pendant l'attente de saisie
         try:
             saisie = ui.demander_saisie().strip()
         except (EOFError, KeyboardInterrupt):
             break
+        finally:
+            ui.arreter_pulsation()
         if not saisie:
-            continue
+            continue                     # Entrée seule : on reste sur le menu (il repulse)
         if saisie.lower() == "exit":
             break
+        if saisie.lower() == "menu":
+            ui.afficher_menu(MODELE)
+            continue
+        ui.sur_menu = False              # à partir d'ici l'écran défile, plus de pulsation
         if saisie.lower() == "reset":
             historique.clear()
             ui.info("\n♠ Nouvelle partie : mémoire effacée.", ui.OR)
             ui.distribuer([("10", "♦"), ("A", "♣")])
             ui.separateur()
-            continue
-        if saisie.lower() == "menu":
-            ui.menu(animer=False)
             continue
 
         raccourci = gerer_raccourci(saisie, historique)
