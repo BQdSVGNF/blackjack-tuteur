@@ -685,8 +685,8 @@ def intro_animee():
     if not ANIMATIONS or LOGO_COLS == 0:
         return
     taille = shutil.get_terminal_size((100, 30))
-    W = min(taille.columns - 1, max(LOGO_COLS + 6, 80))
-    H = min(max(taille.lines - 1, LOGO_ROWS + 10), 28)
+    W = max(min(taille.columns - 1, 200), LOGO_COLS + 6)   # remplit la largeur
+    H = max(min(taille.lines - 1, 46), LOGO_ROWS + 10)     # remplit la hauteur
     gauche = max((W - LOGO_COLS) // 2, 0)
     haut_logo = max((H - LOGO_ROWS) // 2 - 1, 0)
 
@@ -849,6 +849,8 @@ _pulse = None
 _grille_menu = None        # grille (char, fg, bg) de l'écran du menu
 _menu_bas = 0              # nombre de lignes occupées par le menu
 _titre_marge = 0           # marge gauche du logo dans le menu
+_taille_menu = None        # taille du terminal au moment de composer le menu
+_modele_menu = ""          # nom affiché, pour recomposer après un redimensionnement
 
 
 def _repaint_menu(i_teinte, tetes, f):
@@ -896,11 +898,7 @@ class _Pulsation(threading.Thread):
         super().__init__(daemon=True)
         self.stop = threading.Event()
 
-    def run(self):
-        if not _LOGO_TEINTES or not _grille_menu:
-            return
-        W, bas = len(_grille_menu[0]), _menu_bas
-        rng = random.Random()
+    def _nouvelles_tetes(self, W, bas, rng):
         tetes = []
         for _ in range(W):
             if rng.random() < PLUIE_DENSITE:
@@ -908,8 +906,23 @@ class _Pulsation(threading.Thread):
                               rng.randint(4, max(5, bas - 2))])
             else:
                 tetes.append([0.0, 0.0, 0])
+        return tetes
+
+    def run(self):
+        if not _LOGO_TEINTES or not _grille_menu:
+            return
+        rng = random.Random()
+        W, bas = len(_grille_menu[0]), _menu_bas
+        tetes = self._nouvelles_tetes(W, bas, rng)
         n, i, f = len(_LOGO_TEINTES), 0, 0
         while not self.stop.is_set():
+            # redimensionnement de la fenêtre : on recompose le menu à la nouvelle taille
+            if tuple(shutil.get_terminal_size((100, 30))) != _taille_menu:
+                afficher_menu(_modele_menu)            # recompose + réaffiche à la bonne taille
+                _ecrire(_invite())                     # ré-affiche l'invite de saisie
+                W, bas = len(_grille_menu[0]), _menu_bas
+                tetes = self._nouvelles_tetes(W, bas, rng)
+                continue
             for t in tetes:
                 if t[2] == 0:
                     continue
@@ -974,7 +987,7 @@ def _boite_cellules(titre, entrees, couleur):
 def _composer_menu(modele):
     """Construit toute la grille de l'écran du menu (title + boîtes + aide)."""
     taille = shutil.get_terminal_size((100, 30))
-    W = max(min(taille.columns - 1, 118), 2 * LARGEUR_BOITE + 3)
+    W = max(min(taille.columns - 1, 200), 2 * LARGEUR_BOITE + 3)
     marge = max((W - (2 * LARGEUR_BOITE + 3)) // 2, 0)
     ml = max((W - LOGO_COLS) // 2, 0)
     sections = [
@@ -1030,9 +1043,11 @@ def _composer_menu(modele):
 
 def afficher_menu(modele):
     """Compose et pose l'écran du menu (titre en haut), prêt pour le fond animé."""
-    global sur_menu, _grille_menu, _menu_bas, _titre_marge
+    global sur_menu, _grille_menu, _menu_bas, _titre_marge, _taille_menu, _modele_menu
     grille, bas, ml = _composer_menu(modele)
     _grille_menu, _menu_bas, _titre_marge = grille, bas, ml
+    _modele_menu = modele
+    _taille_menu = tuple(shutil.get_terminal_size((100, 30)))
     out = [BASE + "\x1b[2J\x1b[H"]
     for row in grille:
         out.append(_ligne_ansi(row) + "\x1b[K\n")
@@ -1069,8 +1084,12 @@ def ecran_sortie():
 
 # ---------- Conversation ----------
 
+def _invite():
+    return "\n" + OR + GRAS + "♣ Toi ›" + RESET + FOND + BLANC + " "
+
+
 def demander_saisie():
-    _ecrire("\n" + OR + GRAS + "♣ Toi ›" + RESET + FOND + BLANC + " ")
+    _ecrire(_invite())
     try:
         return input()
     finally:

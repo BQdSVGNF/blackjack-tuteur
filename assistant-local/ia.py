@@ -396,7 +396,9 @@ def main():
         finally:
             ui.arreter_pulsation()
         if not saisie:
-            continue                     # Entrée seule : on reste sur le menu (il repulse)
+            if ui.sur_menu:
+                ui.afficher_menu(NOM_IA)     # Entrée seule : réajuste le menu à la fenêtre
+            continue
         if saisie.lower() == "exit":
             break
         if saisie.lower() == "menu":
