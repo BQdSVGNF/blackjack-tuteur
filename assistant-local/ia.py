@@ -169,8 +169,10 @@ def gerer_commandes(commandes):
 RACCOURCIS = {
     "1": ("info", "Pose ta question ou écris ton message, tout simplement."),
     "2": ("info", "Tape : /web suivi de ta question (ex. : /web prix RTX 4060)."),
-    "3": ("prompt", "J'ai besoin d'aide pour coder. Demande-moi ce que je veux faire, "
-                    "puis donne-moi le code complet."),
+    "3": ("prompt", "Active le mode CODEX : tu es un assistant de code expert "
+                    "(C++, Python, web, scripts…). Demande-moi le langage et ce que je veux "
+                    "faire, puis donne le code complet, prêt à compiler/exécuter, avec une "
+                    "courte explication et comment le lancer."),
     "4": ("reset",),
     "5": ("prompt", "Explique-moi la stratégie de base au blackjack sous forme de tableau "
                     "clair (ma main en lignes, la carte du croupier en colonnes)."),

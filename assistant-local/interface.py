@@ -27,17 +27,20 @@ def _fond(r, g, b):
 
 RESET = "\x1b[0m"
 GRAS = "\x1b[1m"
-FOND = _fond(7, 38, 23)            # tapis vert sombre
-TEXTE = _txt(196, 226, 200)        # vert très clair
-DISCRET = _txt(95, 140, 110)       # vert grisé
-VERT = _txt(80, 205, 120)          # vert vif
-OR = _txt(226, 186, 70)            # or des jetons
-ROUGE = _txt(225, 70, 70)
-BLANC = _txt(245, 244, 238)
-NOIR = _txt(20, 20, 20)
-FOND_CARTE = _fond(244, 241, 230)
-DOS_CARTE = _fond(120, 20, 30)
-BASE = RESET + FOND + TEXTE        # style « normal » sur le tapis
+# ----- Thème « dark / hacker » : fond quasi-noir, néons -----
+FOND = _fond(6, 8, 12)             # noir profond légèrement bleuté
+TEXTE = _txt(150, 205, 185)        # cyan-vert doux (lisible)
+DISCRET = _txt(78, 120, 110)       # gris-vert éteint
+VERT = _txt(50, 255, 130)          # vert néon « matrix »
+OR = _txt(235, 185, 70)            # ambre
+ROUGE = _txt(255, 70, 80)          # rouge néon
+BLANC = _txt(235, 245, 240)
+NOIR = _txt(10, 12, 16)
+CYAN = _txt(60, 230, 230)          # cyan néon
+MAGENTA = _txt(230, 90, 205)       # magenta néon
+FOND_CARTE = _fond(238, 240, 235)
+DOS_CARTE = _fond(120, 20, 40)
+BASE = RESET + FOND + TEXTE        # style « normal »
 
 ENSEIGNES = [("♠", NOIR), ("♥", ROUGE), ("♦", ROUGE), ("♣", NOIR)]
 
@@ -124,7 +127,7 @@ def distribuer(main):
 # Chaque caractère ▀ = 2 pixels (couleur du haut en avant-plan, couleur du bas
 # en fond). On obtient quasiment la finesse d'une image, tout en restant terminal.
 
-BG_RGB = (7, 38, 23)
+BG_RGB = (6, 8, 12)
 
 
 def _charger_logo():
@@ -253,7 +256,7 @@ def intro_animee():
 
     rng = random.Random(os.environ.get("BJ_SEED"))
     etoiles = [(rng.randint(0, W - 1), rng.randint(0, ciel_h - 1),
-                rng.uniform(0, 6.28), rng.choice("··.*+"))
+                rng.uniform(0, 6.28), rng.choice("01·.:+*¦"))
                for _ in range(int(W * ciel_h * 0.09))]
 
     # pointe basse de chaque colonne encrée (pour faire tomber les gouttes)
@@ -276,8 +279,8 @@ def intro_animee():
             # ciel scintillant
             for x, y, phase, ch in etoiles:
                 b = 0.5 + 0.5 * math.sin(f * 0.35 + phase)
-                col = _txt(60, 80, 110) if b < 0.3 else (
-                    _txt(125, 155, 200) if b < 0.65 else _txt(230, 242, 255))
+                col = _txt(30, 70, 60) if b < 0.3 else (
+                    _txt(55, 150, 130) if b < 0.65 else _txt(120, 255, 200))
                 grille[y][x] = (ch, col, None)
 
             # logo : colonnes révélées de gauche à droite, reflet au front
@@ -321,8 +324,7 @@ def separateur():
 
 # ---------- Menu en sections ----------
 
-BLEU = _txt(95, 155, 230)
-CYAN = _txt(90, 200, 200)
+BLEU = _txt(90, 150, 240)
 LARGEUR_BOITE = 44
 
 
@@ -352,7 +354,7 @@ def menu(animer=True):
         ("♠ TABLE — L'IA", [
             ("1", "Discuter (tape ton message)"),
             ("2", "Recherche web sourcée"),
-            ("3", "Aide au code"),
+            ("3", "CODEX — coder (C++, Python, web…)"),
             ("4", "Nouvelle partie (efface la mémoire)"),
         ], VERT),
         ("♥ STRATÉGIE BLACKJACK", [
@@ -369,7 +371,7 @@ def menu(animer=True):
             ("11", "Mon adresse IP"),
             ("12", "Tester ma connexion (ping)"),
             ("13", "Mes connexions actives"),
-        ], BLEU),
+        ], CYAN),
     ]
     anim, globals()["ANIMATIONS"] = ANIMATIONS, ANIMATIONS and animer
     marge = max((largeur() - (2 * LARGEUR_BOITE + 3)) // 2, 0)
@@ -447,7 +449,7 @@ def afficher_menu(modele):
     _ecrire(BASE + "\x1b[2J\x1b[H\n")
     banniere()                   # logo au repos, à partir de LIGNE_TITRE
     _ecrire("\n")
-    sous_titre = f"♠ ♥ ♦ ♣   ton IA locale · modèle {modele}   ♣ ♦ ♥ ♠"
+    sous_titre = f"▓▒░  IA locale · {modele} · hors-ligne · chiffré  ░▒▓"
     _ecrire(_centrer("", len(sous_titre)))
     machine_a_ecrire(sous_titre, DISCRET, 0.006)
     _ecrire("\n")
