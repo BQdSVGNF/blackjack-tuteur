@@ -20,15 +20,7 @@ python -c "import ollama, ddgs" 2>nul || (
     python -m pip install --quiet ollama ddgs
 )
 
-rem ===== Musique : ouvre Spotify et lance la lecture =====
-rem Pour mettre TA playlist : dans Spotify, clic droit dessus ^> Partager ^> Copier le lien Spotify URI
-rem puis colle-le ci-dessous (format spotify:playlist:xxxx ou spotify:track:xxxx).
-set "SPOTIFY=spotify:playlist:37i9dQZF1DXcBWIGoYBM5M"
-echo Ouverture de Spotify...
-start "" "%SPOTIFY%"
-rem Laisse Spotify s'ouvrir, puis force la lecture (touche media Play/Pause)
-timeout /t 4 /nobreak >nul
-powershell -NoProfile -Command "(New-Object -ComObject WScript.Shell).SendKeys([char]179)" >nul 2>nul
+rem La musique Spotify est gérée dans le programme (menu > [14] Paramètres).
 
 rem ===== Optimisations RTX 4060 (8 Go) + Ryzen 5 5600 =====
 rem Flash attention : plus rapide et moins de mémoire GPU

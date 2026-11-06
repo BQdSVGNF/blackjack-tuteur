@@ -6,6 +6,7 @@
 """
 import html
 import json
+import os
 import re
 import subprocess
 import sys
@@ -17,6 +18,110 @@ import interface as ui
 # On parle à Ollama par son API HTTP locale (pas de module à installer, donc
 # rien que le « Contrôle intelligent des applications » de Windows puisse bloquer).
 OLLAMA_URL = "http://localhost:11434/api/chat"
+
+
+# ---------- Paramètres (sauvegardés dans parametres.json) ----------
+
+CHEMIN_CONF = os.path.join(os.path.dirname(os.path.abspath(__file__)), "parametres.json")
+DEFAUTS = {
+    "spotify": "spotify:playlist:37i9dQZF1DXcBWIGoYBM5M",
+    "musique_auto": True,
+    "animations": True,
+    "pluie_densite": "moyenne",     # faible / moyenne / forte
+    "pluie_vitesse": "normale",     # lente / normale / rapide
+    "titre_cycle": True,            # titre arc-en-ciel animé
+}
+DENSITES = {"faible": 0.4, "moyenne": 0.8, "forte": 1.0}
+VITESSES = {"lente": 0.6, "normale": 1.0, "rapide": 1.7}
+
+
+def charger_conf():
+    conf = dict(DEFAUTS)
+    try:
+        with open(CHEMIN_CONF, encoding="utf-8") as fp:
+            conf.update(json.load(fp))
+    except Exception:
+        pass
+    return conf
+
+
+def sauver_conf(conf):
+    try:
+        with open(CHEMIN_CONF, "w", encoding="utf-8") as fp:
+            json.dump(conf, fp, indent=2, ensure_ascii=False)
+    except Exception as e:
+        ui.erreur(f"Impossible d'enregistrer les paramètres : {e}")
+
+
+def appliquer_conf(conf):
+    ui.appliquer_params(
+        animations=conf.get("animations", True),
+        densite=DENSITES.get(conf.get("pluie_densite"), 0.8),
+        vitesse=VITESSES.get(conf.get("pluie_vitesse"), 1.0),
+        cycle=conf.get("titre_cycle", True),
+    )
+
+
+def lancer_musique(conf):
+    """Ouvre Spotify sur la playlist choisie (Windows uniquement)."""
+    if conf.get("musique_auto") and conf.get("spotify") and hasattr(os, "startfile"):
+        try:
+            os.startfile(conf["spotify"])          # ouvre l'URI spotify: via l'appli
+        except Exception:
+            pass
+
+
+def _suivant(valeur, choix):
+    """Renvoie l'élément suivant dans une liste (pour faire défiler une option)."""
+    try:
+        return choix[(choix.index(valeur) + 1) % len(choix)]
+    except ValueError:
+        return choix[0]
+
+
+def ecran_parametres(conf):
+    """Mode Paramètres : règle Spotify, les couleurs/LED et la pluie."""
+    while True:
+        oui = lambda b: "oui" if b else "non"
+        ui.effacer()
+        ui.info("\n  ⚙  PARAMÈTRES  —  tape un numéro pour modifier, 0 pour revenir\n", ui.CYAN)
+        lignes = [
+            ("1", "Playlist / lien Spotify", conf["spotify"]),
+            ("2", "Musique au lancement", oui(conf["musique_auto"])),
+            ("3", "Animations (intro + pluie)", oui(conf["animations"])),
+            ("4", "Densité de la pluie", conf["pluie_densite"]),
+            ("5", "Vitesse de la pluie", conf["pluie_vitesse"]),
+            ("6", "Titre arc-en-ciel (sinon fixe)", oui(conf["titre_cycle"])),
+            ("0", "Revenir au menu", ""),
+        ]
+        for num, nom, val in lignes:
+            ligne = f"   {ui.OR}[{num:>2}]{ui.TEXTE} {nom:<32}"
+            if val:
+                ligne += f"{ui.VERT}{val}"
+            ui.info(ligne + ui.BASE)
+        choix = ui.demander_texte("Ton choix").strip().lower()
+
+        if choix in ("0", "", "retour", "exit"):
+            break
+        elif choix == "1":
+            nv = ui.demander_texte("Colle ton lien Spotify (spotify:playlist:… ou https://open.spotify.com/…)")
+            if nv:
+                conf["spotify"] = nv.strip()
+        elif choix == "2":
+            conf["musique_auto"] = not conf["musique_auto"]
+        elif choix == "3":
+            conf["animations"] = not conf["animations"]
+        elif choix == "4":
+            conf["pluie_densite"] = _suivant(conf["pluie_densite"], ["faible", "moyenne", "forte"])
+        elif choix == "5":
+            conf["pluie_vitesse"] = _suivant(conf["pluie_vitesse"], ["lente", "normale", "rapide"])
+        elif choix == "6":
+            conf["titre_cycle"] = not conf["titre_cycle"]
+        else:
+            continue
+        sauver_conf(conf)
+        appliquer_conf(conf)
+    ui.afficher_menu(MODELE)
 
 try:
     from ddgs import DDGS
@@ -225,10 +330,13 @@ def gerer_raccourci(saisie, historique):
 
 def main():
     historique = []
+    conf = charger_conf()
+    appliquer_conf(conf)                 # applique les réglages avant l'intro
+    lancer_musique(conf)                 # ouvre Spotify si activé
     ui.ecran_accueil(MODELE)
     while True:
         if ui.sur_menu:
-            ui.demarrer_pulsation()      # le titre respire pendant l'attente de saisie
+            ui.demarrer_pulsation()      # fond animé pendant l'attente de saisie
         try:
             saisie = ui.demander_saisie().strip()
         except (EOFError, KeyboardInterrupt):
@@ -241,6 +349,9 @@ def main():
             break
         if saisie.lower() == "menu":
             ui.afficher_menu(MODELE)
+            continue
+        if saisie == "14" or saisie.lower() in ("params", "paramètres", "parametres"):
+            ecran_parametres(conf)       # redessine le menu en sortant
             continue
         ui.sur_menu = False              # à partir d'ici l'écran défile, plus de pulsation
         if saisie.lower() == "reset":

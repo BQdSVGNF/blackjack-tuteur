@@ -15,6 +15,25 @@ import time
 
 ANIMATIONS = os.environ.get("BJ_SANS_ANIMATION") != "1" and sys.stdout.isatty()
 
+# Réglages modifiables via le mode Paramètres (voir appliquer_params).
+PLUIE_DENSITE = 0.8        # fraction de colonnes de pluie actives (0 = aucune, 1 = toutes)
+PLUIE_VITESSE = 1.0        # multiplicateur de vitesse de la pluie
+TITRE_CYCLE = True         # True = le titre cycle l'arc-en-ciel, False = couleur fixe
+
+
+def appliquer_params(animations=None, densite=None, vitesse=None, cycle=None):
+    """Applique les réglages du mode Paramètres (à chaud)."""
+    global ANIMATIONS, PLUIE_DENSITE, PLUIE_VITESSE, TITRE_CYCLE
+    if animations is not None:
+        ANIMATIONS = (bool(animations) and sys.stdout.isatty()
+                      and os.environ.get("BJ_SANS_ANIMATION") != "1")
+    if densite is not None:
+        PLUIE_DENSITE = max(0.0, min(1.0, densite))
+    if vitesse is not None:
+        PLUIE_VITESSE = max(0.3, min(3.0, vitesse))
+    if cycle is not None:
+        TITRE_CYCLE = bool(cycle)
+
 
 # ---------- Couleurs ----------
 
@@ -58,6 +77,11 @@ def _pause(secondes):
 
 def largeur():
     return shutil.get_terminal_size((100, 30)).columns
+
+
+def effacer():
+    """Efface l'écran et remet le curseur en haut."""
+    _ecrire(BASE + "\x1b[2J\x1b[H")
 
 
 def initialiser():
@@ -293,9 +317,14 @@ def intro_animee():
     haut_logo = max((H - LOGO_ROWS) // 2 - 1, 0)
 
     rng = random.Random(os.environ.get("BJ_SEED"))
-    # une goutte de pluie par colonne : [tête (float), vitesse, longueur de traînée]
-    tetes = [[rng.uniform(-H, 0), rng.uniform(0.7, 1.9), rng.randint(6, max(7, H - 1))]
-             for _ in range(W)]
+    # une goutte de pluie par colonne : [tête (float), vitesse, longueur] ; longueur 0 = inactive
+    tetes = []
+    for _ in range(W):
+        if rng.random() < PLUIE_DENSITE:
+            tetes.append([rng.uniform(-H, 0), rng.uniform(0.7, 1.9) * PLUIE_VITESSE,
+                          rng.randint(6, max(7, H - 1))])
+        else:
+            tetes.append([0.0, 0.0, 0])
 
     R1 = 22                                  # pluie seule
     reveal = LOGO_COLS // 4 + 2              # révélation du logo
@@ -316,10 +345,12 @@ def intro_animee():
             # ----- pluie de code -----
             for x in range(W):
                 t = tetes[x]
+                if t[2] == 0:
+                    continue
                 t[0] += t[1]
                 if t[0] - t[2] > H + 1:
                     t[0] = rng.uniform(-H, 0.0)
-                    t[1] = rng.uniform(0.7, 1.9)
+                    t[1] = rng.uniform(0.7, 1.9) * PLUIE_VITESSE
                     t[2] = rng.randint(6, max(7, H - 1))
                 tete_y = int(t[0])
                 for k in range(t[2]):
@@ -491,17 +522,25 @@ class _Pulsation(threading.Thread):
             return
         W, bas = len(_grille_menu[0]), _menu_bas
         rng = random.Random()
-        tetes = [[rng.uniform(-bas, 0.0), rng.uniform(0.6, 1.5), rng.randint(4, max(5, bas - 2))]
-                 for _ in range(W)]
+        tetes = []
+        for _ in range(W):
+            if rng.random() < PLUIE_DENSITE:
+                tetes.append([rng.uniform(-bas, 0.0), rng.uniform(0.6, 1.5) * PLUIE_VITESSE,
+                              rng.randint(4, max(5, bas - 2))])
+            else:
+                tetes.append([0.0, 0.0, 0])
         n, i, f = len(_LOGO_TEINTES), 0, 0
         while not self.stop.is_set():
             for t in tetes:
+                if t[2] == 0:
+                    continue
                 t[0] += t[1]
                 if t[0] - t[2] > bas:
                     t[0] = rng.uniform(-bas, 0.0)
-                    t[1] = rng.uniform(0.6, 1.5)
+                    t[1] = rng.uniform(0.6, 1.5) * PLUIE_VITESSE
                     t[2] = rng.randint(4, max(5, bas - 2))
-            _ecrire(_repaint_menu(i % n, tetes, f))
+            teinte = (i % n) if TITRE_CYCLE else 0
+            _ecrire(_repaint_menu(teinte, tetes, f))
             i += 1
             f += 1
             self.stop.wait(0.09)
@@ -566,7 +605,8 @@ def _composer_menu(modele):
         ("♥ STRATÉGIE BLACKJACK", [("5", "Stratégie de base"), ("6", "Apprendre à compter (Hi-Lo)"),
                                    ("7", "Quiz : que faire ?")], ROUGE),
         ("♦ SYSTÈME — ma machine", [("8", "Infos système"), ("9", "Espace disque"),
-                                    ("10", "Lancer un programme")], OR),
+                                    ("10", "Lancer un programme"),
+                                    ("14", "Paramètres (Spotify, couleurs…)")], OR),
         ("♣ RÉSEAU — ma connexion", [("11", "Mon adresse IP"), ("12", "Tester ma connexion (ping)"),
                                      ("13", "Mes connexions actives")], CYAN),
     ]
