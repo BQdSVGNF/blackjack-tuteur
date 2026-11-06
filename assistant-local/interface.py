@@ -19,11 +19,14 @@ ANIMATIONS = os.environ.get("BJ_SANS_ANIMATION") != "1" and sys.stdout.isatty()
 PLUIE_DENSITE = 0.8        # fraction de colonnes de pluie actives (0 = aucune, 1 = toutes)
 PLUIE_VITESSE = 1.0        # multiplicateur de vitesse de la pluie
 TITRE_CYCLE = True         # True = le titre cycle l'arc-en-ciel, False = couleur fixe
+SON = True                 # bips de validation
+CRT = True                 # effet scanlines / vieil écran
 
 
-def appliquer_params(animations=None, densite=None, vitesse=None, cycle=None):
+def appliquer_params(animations=None, densite=None, vitesse=None, cycle=None,
+                     son=None, crt=None):
     """Applique les réglages du mode Paramètres (à chaud)."""
-    global ANIMATIONS, PLUIE_DENSITE, PLUIE_VITESSE, TITRE_CYCLE
+    global ANIMATIONS, PLUIE_DENSITE, PLUIE_VITESSE, TITRE_CYCLE, SON, CRT
     if animations is not None:
         ANIMATIONS = (bool(animations) and sys.stdout.isatty()
                       and os.environ.get("BJ_SANS_ANIMATION") != "1")
@@ -33,6 +36,26 @@ def appliquer_params(animations=None, densite=None, vitesse=None, cycle=None):
         PLUIE_VITESSE = max(0.3, min(3.0, vitesse))
     if cycle is not None:
         TITRE_CYCLE = bool(cycle)
+    if son is not None:
+        SON = bool(son)
+    if crt is not None:
+        CRT = bool(crt)
+
+
+def _bip(sequence=((880, 90), (1245, 130))):
+    """Court signal sonore (Windows : winsound ; sinon cloche du terminal)."""
+    if not SON:
+        return
+    try:
+        import winsound
+        for freq, duree in sequence:
+            winsound.Beep(freq, duree)
+    except Exception:
+        try:
+            sys.stdout.write("\a")
+            sys.stdout.flush()
+        except Exception:
+            pass
 
 
 # ---------- Couleurs ----------
@@ -284,8 +307,34 @@ def _montrer_curseur():
     _ecrire("\x1b[?25h")
 
 
+def _crt(grille, f):
+    """Ajoute un effet CRT : scanlines fixes + barre de balayage qui roule."""
+    if not CRT or not grille:
+        return grille
+    H, W = len(grille), len(grille[0])
+    for y in range(0, H, 3):                     # scanlines discrètes
+        row = grille[y]
+        for x in range(W):
+            if row[x][0] == " " and row[x][1] is None:
+                row[x] = ("─", _txt(13, 28, 32), None)
+    bar = (f * 2) % (H + 6) - 3                   # barre lumineuse qui descend
+    for yy in (bar, bar + 1):
+        if 0 <= yy < H:
+            row = grille[yy]
+            for x in range(W):
+                if row[x][0] in (" ", "─") and (row[x][1] is None or row[x][1] == _txt(13, 28, 32)):
+                    row[x] = ("─", _txt(28, 58, 64), None)
+    return grille
+
+
+_crt_f = 0
+
+
 def _rendu_grille(grille):
-    """Transforme une grille de (char, fg, bg) en une image terminal."""
+    """Transforme une grille de (char, fg, bg) en une image terminal (+ CRT)."""
+    global _crt_f
+    grille = _crt(grille, _crt_f)
+    _crt_f += 1
     out = ["\x1b[H"]
     for rangee in grille:
         morceaux = [BASE]
@@ -316,10 +365,35 @@ _GLITCH_GARBAGE = "!<>/\\#%&01=?*¦:+"
 _CHECK = ["      ", "     █", "█   █ ", " █ █  ", "  █   "]
 
 
+def _intro_boot(W, H):
+    """Petit journal de démarrage « hacker » qui s'écrit avant l'œil."""
+    lignes = [
+        "> INITIALISATION DU NOYAU",
+        "> CHARGEMENT DU MODELE black-jack",
+        "> DECHIFFREMENT AES-256",
+        "> CONNEXION AU TAPIS",
+        "> ACTIVATION DE L'OEIL",
+    ]
+    _ecrire(BASE + "\x1b[2J\x1b[H")
+    for i, txt in enumerate(lignes):
+        _ecrire(f"\x1b[{2 + i};3H" + VERT)
+        for ch in txt:
+            _ecrire(ch)
+            time.sleep(0.004)
+        for _ in range(random.randint(3, 7)):
+            _ecrire(".")
+            time.sleep(0.028)
+        _ecrire("  " + _txt(130, 255, 160) + GRAS + "OK" + BASE)
+        time.sleep(0.07)
+    time.sleep(0.22)
+    _ecrire(BASE + "\x1b[2J\x1b[H")
+
+
 def _intro_granted(W, H):
     """Affiche « ACCÈS AUTORISÉ ✓ » en vert, stable, avant le logo."""
     if not _GRANTED:
         return
+    _bip()                                    # signal de validation
     art = _GRANTED
     h = len(art)
     bloc = max(len(l) for l in art) + 2 + len(_CHECK[0])
@@ -512,6 +586,7 @@ def intro_animee():
 
     _cacher_curseur()
     try:
+        _intro_boot(W, H)                    # journal de démarrage « hacker »
         _intro_oeil(W, H)                    # l'« œil » qui s'ouvre + enseignes qui tournent
         _intro_glitch(W, H)                  # mots « hacker » qui flashent (glitch)
         _intro_granted(W, H)                 # « ACCÈS AUTORISÉ ✓ » en vert
@@ -843,10 +918,23 @@ def afficher_menu(modele):
     sur_menu = True
 
 
+def _distribue_blackjack():
+    """Petite signature : Black Jack distribue une main gagnante (A♠ + J♠ = 21)."""
+    if not ANIMATIONS:
+        return
+    effacer()
+    _ecrire("\n\n\n")
+    distribuer([("A", "♠"), ("J", "♠")])
+    _ecrire("\n")
+    clignoter("♠  B L A C K J A C K   ·   21  ♠", OR, 3)
+    _pause(0.4)
+
+
 def ecran_accueil(modele):
     initialiser()
     if ANIMATIONS:
-        intro_animee()           # cinématique : étoiles + logo qui brille et dégouline
+        intro_animee()           # boot, œil, glitch, ACCÈS AUTORISÉ, pluie, logo
+        _distribue_blackjack()   # distribution d'une main gagnante (21)
     afficher_menu(modele)
 
 

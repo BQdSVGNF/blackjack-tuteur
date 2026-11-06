@@ -30,6 +30,8 @@ DEFAUTS = {
     "pluie_densite": "moyenne",     # faible / moyenne / forte
     "pluie_vitesse": "normale",     # lente / normale / rapide
     "titre_cycle": True,            # titre arc-en-ciel animé
+    "son": True,                    # bips de validation
+    "crt": True,                    # effet scanlines / vieil écran
 }
 DENSITES = {"faible": 0.4, "moyenne": 0.8, "forte": 1.0}
 VITESSES = {"lente": 0.6, "normale": 1.0, "rapide": 1.7}
@@ -59,6 +61,8 @@ def appliquer_conf(conf):
         densite=DENSITES.get(conf.get("pluie_densite"), 0.8),
         vitesse=VITESSES.get(conf.get("pluie_vitesse"), 1.0),
         cycle=conf.get("titre_cycle", True),
+        son=conf.get("son", True),
+        crt=conf.get("crt", True),
     )
 
 
@@ -92,6 +96,8 @@ def ecran_parametres(conf):
             ("4", "Densité de la pluie", conf["pluie_densite"]),
             ("5", "Vitesse de la pluie", conf["pluie_vitesse"]),
             ("6", "Titre arc-en-ciel (sinon fixe)", oui(conf["titre_cycle"])),
+            ("7", "Son (bips de validation)", oui(conf["son"])),
+            ("8", "Effet CRT (scanlines)", oui(conf["crt"])),
             ("0", "Revenir au menu", ""),
         ]
         for num, nom, val in lignes:
@@ -117,6 +123,10 @@ def ecran_parametres(conf):
             conf["pluie_vitesse"] = _suivant(conf["pluie_vitesse"], ["lente", "normale", "rapide"])
         elif choix == "6":
             conf["titre_cycle"] = not conf["titre_cycle"]
+        elif choix == "7":
+            conf["son"] = not conf["son"]
+        elif choix == "8":
+            conf["crt"] = not conf["crt"]
         else:
             continue
         sauver_conf(conf)
