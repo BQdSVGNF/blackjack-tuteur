@@ -413,7 +413,8 @@ def main():
 
 
 def _boucle(historique, conf):
-    ui.ecran_accueil(NOM_IA)
+    if not ui.ecran_accueil(NOM_IA):     # ÉCHAP sur l'écran d'accueil → on quitte
+        return
     while True:
         if ui.sur_menu:
             ui.demarrer_pulsation()      # fond animé pendant l'attente de saisie

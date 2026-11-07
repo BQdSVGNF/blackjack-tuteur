@@ -391,421 +391,367 @@ def _rendu_grille(grille):
 CARS_PLUIE = "01010110¦:+*=<>/\\!?#$%&01"
 
 
-try:
-    from mots_glitch import MOTS as _MOTS_GLITCH, GRANTED as _GRANTED
-except Exception:
-    _MOTS_GLITCH, _GRANTED = [], []
+# ---------- Écran d'accueil : un œil détaillé et étiré qui s'ouvre ----------
+#
+# L'affichage de départ, c'est UNIQUEMENT l'œil (plus détaillé, plus long, plus
+# étiré) + un slogan de hacker juste dessous + l'invite « ENTRÉE / ÉCHAP ».
+# ENTRÉE → on entre (le menu s'affiche). ÉCHAP → on quitte le programme.
 
-_GLITCH_GARBAGE = "!<>/\\#%&01=?*¦:+"
+_GARB = "!<>/\\#%&01=?*¦:+"
 
-# petit « ✓ » en blocs, affiché à droite d'« ACCÈS AUTORISÉ »
-_CHECK = ["      ", "     █", "█   █ ", " █ █  ", "  █   "]
-
-
-def _intro_boot(W, H):
-    """Petit journal de démarrage « hacker » qui s'écrit avant l'œil."""
-    lignes = [
-        "> INITIALISATION DU NOYAU",
-        "> CHARGEMENT DU MODELE black-jack",
-        "> DECHIFFREMENT AES-256",
-        "> CONNEXION AU TAPIS",
-        "> ACTIVATION DE L'OEIL",
-    ]
-    _ecrire(BASE + "\x1b[2J\x1b[H")
-    for i, txt in enumerate(lignes):
-        _ecrire(f"\x1b[{_intro_voffset + 2 + i};{_intro_offset + 3}H" + VERT)
-        for ch in txt:
-            _ecrire(ch)
-            time.sleep(0.004)
-        for _ in range(random.randint(3, 7)):
-            _ecrire(".")
-            time.sleep(0.028)
-        _ecrire("  " + _txt(130, 255, 160) + GRAS + "OK" + BASE)
-        time.sleep(0.07)
-    time.sleep(0.22)
-    _ecrire(BASE + "\x1b[2J\x1b[H")
+_SLOGANS = [
+    "LA MAISON NE PERD JAMAIS.",
+    "JE VOIS DÉJÀ DANS TON JEU.",
+    "LA CHANCE EST UNE ILLUSION.",
+    "RIEN N'EST LAISSÉ AU HASARD.",
+    "LA PARTIE A DÉJÀ COMMENCÉ.",
+    "TU AS DÉJÀ PERDU. TU L'IGNORES.",
+    "MONTRE-MOI TON JEU.",
+]
 
 
-def _intro_granted(W, H):
-    """Panneau encadré « ACCÈS AUTORISÉ ✓ » en vert, avant le logo."""
-    if not _GRANTED:
-        return
-    _bip()                                    # signal de validation
-    art = _GRANTED
-    h = len(art)
-    aw = max(len(l) for l in art)
-    bloc = aw + 2 + len(_CHECK[0])
-    cw = min(bloc + 10, W - 2)                 # largeur du panneau
-    ch_ = h + 4                                 # hauteur du panneau
-    top = max(H // 2 - ch_ // 2, 0)
-    left = max((W - cw) // 2, 0)
-    a_top = top + 2
-    a_left = left + max((cw - bloc) // 2, 1)
-    gx_check = a_left + aw + 2
-    titre = " ◆ ACCÈS AUTORISÉ ◆ "
-    sous = "NIVEAU 21 · COFFRE DÉBLOQUÉ"
-    for fr in range(24):
-        grille = [[(" ", None, None) for _ in range(W)] for _ in range(H)]
-        vif = _txt(90, 255, 150) if fr % 6 < 4 else _txt(150, 255, 190)
-        bord = _txt(55, 200, 120)
-        for x in range(left, left + cw):        # bords haut/bas
-            if 0 <= x < W:
-                grille[top][x] = ("─", bord, None)
-                grille[top + ch_ - 1][x] = ("─", bord, None)
-        for y in range(top, top + ch_):         # bords gauche/droite
-            if 0 <= y < H:
-                grille[y][left] = ("│", bord, None)
-                if left + cw - 1 < W:
-                    grille[y][left + cw - 1] = ("│", bord, None)
-        for yy, xx, c in [(top, left, "┌"), (top, left + cw - 1, "┐"),
-                          (top + ch_ - 1, left, "└"), (top + ch_ - 1, left + cw - 1, "┘")]:
-            if 0 <= yy < H and 0 <= xx < W:
-                grille[yy][xx] = (c, bord, None)
-        tx = left + max((cw - len(titre)) // 2, 0)     # titre dans la bordure
-        for i, c in enumerate(titre):
-            if 0 <= tx + i < W:
-                grille[top][tx + i] = (c, vif, None)
-        for i, ligne in enumerate(art):                 # le mot + la coche
-            for j, c in enumerate(ligne):
-                if c != " " and 0 <= a_left + j < W and a_top + i < H:
-                    grille[a_top + i][a_left + j] = (c, vif, None)
-        for i, ligne in enumerate(_CHECK):
-            for j, c in enumerate(ligne):
-                if c != " " and 0 <= gx_check + j < W and a_top + i < H:
-                    grille[a_top + i][gx_check + j] = (c, _txt(180, 255, 200), None)
-        sx = left + max((cw - len(sous)) // 2, 0)       # sous-titre
-        sy = a_top + h + 1
-        if sy < H:
-            for i, c in enumerate(sous):
-                if 0 <= sx + i < W:
-                    grille[sy][sx + i] = (c, _txt(120, 255, 170), None)
-        _ecrire(_rendu_grille(grille))
-        time.sleep(0.05)
+class _Clavier:
+    """Lecture clavier NON bloquante. .get() renvoie 'enter', 'esc' ou None.
+    Windows : msvcrt. Linux/Mac : termios en mode cbreak."""
+    def __enter__(self):
+        self.nt = (os.name == "nt")
+        self.ok = False
+        try:
+            if self.nt:
+                import msvcrt
+                self.msvcrt = msvcrt
+                self.ok = True
+            else:
+                import termios, tty
+                self.termios = termios
+                self.fd = sys.stdin.fileno()
+                self.old = termios.tcgetattr(self.fd)
+                tty.setcbreak(self.fd)
+                self.ok = True
+        except Exception:
+            self.ok = False
+        return self
+
+    def __exit__(self, *a):
+        if self.ok and not self.nt:
+            try:
+                self.termios.tcsetattr(self.fd, self.termios.TCSADRAIN, self.old)
+            except Exception:
+                pass
+
+    def get(self):
+        if not self.ok:
+            return None
+        try:
+            if self.nt:
+                res = None
+                while self.msvcrt.kbhit():
+                    ch = self.msvcrt.getwch()
+                    if ch in ("\x00", "\xe0"):           # touche spéciale (flèche…)
+                        if self.msvcrt.kbhit():
+                            self.msvcrt.getwch()
+                        continue
+                    if ch in ("\r", "\n"):
+                        res = "enter"
+                    elif ch == "\x1b":
+                        res = "esc"
+                    elif ch == "\x03":
+                        raise KeyboardInterrupt
+                return res
+            import select
+            r, _, _ = select.select([self.fd], [], [], 0)
+            if not r:
+                return None
+            ch = os.read(self.fd, 1)
+            if ch in (b"\r", b"\n"):
+                return "enter"
+            if ch == b"\x03":
+                raise KeyboardInterrupt
+            if ch == b"\x1b":
+                r2, _, _ = select.select([self.fd], [], [], 0.02)
+                if r2:
+                    os.read(self.fd, 2)                   # avale une séquence de flèche
+                    return None
+                return "esc"
+            return None
+        except KeyboardInterrupt:
+            raise
+        except Exception:
+            return None
 
 
-def _cadre_mot(grille, W, H, gauche, top, w, h, couleur, label):
-    """Dessine un cadre à coins + un petit label au-dessus d'un mot."""
-    coins = [(gauche - 3, top - 1, "┌"), (gauche + w + 2, top - 1, "┐"),
-             (gauche - 3, top + h, "└"), (gauche + w + 2, top + h, "┘")]
-    for x0, y0, ch in coins:
-        if 0 <= x0 < W and 0 <= y0 < H:
-            grille[y0][x0] = (ch, couleur, None)
-            for d in (1, 2):                      # petits segments aux coins
-                if "┌" in ch or "└" in ch:
-                    if 0 <= x0 + d < W:
-                        grille[y0][x0 + d] = ("─", couleur, None)
+def _nouvelle_grille(W, H):
+    return [[(" ", None, None) for _ in range(W)] for _ in range(H)]
+
+
+# compression horizontale : une cellule du terminal est ~2× plus haute que large
+_ASP = 2.05
+
+
+def _oeil_geo(W, H):
+    """Géométrie de l'œil (étiré) + les lignes où poser le slogan et l'invite."""
+    cx = W // 2
+    cy = int(H * 0.44)
+    Wx = max(min(cx - 4, 58), 10)                 # DEMI-largeur (bien étiré)
+    Hy = max(min(cy - 3, (H - cy) - 6, 13), 3)    # demi-hauteur
+    Ri = Hy - 0.4                                  # rayon vertical de l'iris
+    r_slogan = min(cy + Hy + 3, H - 4)
+    r_invite = min(cy + Hy + 5, H - 2)
+    return cx, cy, Wx, Hy, Ri, r_slogan, r_invite
+
+
+def _dessiner_oeil(grille, W, H, ouv, gx, gy, dil, f):
+    """Dessine un œil réaliste et détaillé dans la grille.
+    ouv 0→1 = ouverture des paupières ; gx,gy = décalage du regard ; dil = pupille."""
+    cx, cy, Wx, Hy, Ri, _, _ = _oeil_geo(W, H)
+    Rp = Ri * 0.40 * dil                           # rayon de la pupille
+    icx, icy = cx + gx, cy + gy                     # centre de l'iris (suit le regard)
+
+    def lid(ex):                                    # demi-hauteur de l'amande à la colonne ex
+        nx = ex / Wx
+        if abs(nx) >= 1.0:
+            return 0.0
+        return ouv * Hy * (1.0 - nx * nx) ** 0.60   # exposant bas = coins plus pointus (étiré)
+
+    y0, y1 = max(cy - Hy - 2, 0), min(cy + Hy + 3, H)
+    x0, x1 = max(cx - Wx - 1, 0), min(cx + Wx + 2, W)
+    for y in range(y0, y1):
+        dy = y - cy
+        row = grille[y]
+        for x in range(x0, x1):
+            ex = x - cx
+            l = lid(ex)
+            if l <= 0.0:
+                continue
+            ady = abs(dy)
+            if ady > l + 0.6:
+                continue
+            bord_paup = ady > l - 0.6                # tout près du bord de la paupière
+            sous_haut = dy < -l * 0.30               # sous la paupière haute → ombre
+            vx = (x - icx) / _ASP
+            vy = (y - icy)
+            r = math.hypot(vx, vy)
+            th = math.atan2(vy, vx)
+
+            if r <= Rp - 0.5:                        # --- pupille (noir profond) ---
+                ch, col = "█", (3, 5, 11)
+            elif r <= Rp + 0.4:                      # bord adouci de la pupille
+                ch, col = "▓", (9, 13, 24)
+            elif r <= Ri:                            # --- iris bleu, très détaillé ---
+                rn = (r - Rp) / max(Ri - Rp, 0.01)   # 0 au bord pupille → 1 au limbe
+                fib = 0.5 + 0.5 * math.sin(th * 46 + r * 0.9)      # fibres radiales fines
+                cry = 0.5 + 0.5 * math.sin(th * 6 - r * 1.8 + 0.7)  # cryptes plus larges
+                cc = (70, 190, 240)                  # centre clair (cyan)
+                ec = (16, 52, 120)                   # bord profond (bleu nuit)
+                base = [cc[i] + (ec[i] - cc[i]) * rn for i in range(3)]
+                br = (0.70 + 0.42 * fib) * (0.85 + 0.30 * cry)
+                if 0.10 < rn < 0.24:                 # collerette claire autour de la pupille
+                    br *= 1.4
+                if rn > 0.88:                        # anneau limbique sombre
+                    br *= 0.30
+                if sous_haut:
+                    br *= 0.60
+                col = tuple(min(255, max(0, int(c * br))) for c in base)
+                s = fib * 0.6 + cry * 0.4
+                ch = "█" if s > 0.56 else ("▓" if s > 0.34 else "▒")
+            else:                                    # --- blanc de l'œil (sclère) ---
+                nx = ex / Wx
+                coin = abs(nx) > 0.88
+                if coin:                             # petite caroncule rosée au coin
+                    ch, col = "▓", (198, 162, 162)
                 else:
-                    if 0 <= x0 - d < W:
-                        grille[y0][x0 - d] = ("─", couleur, None)
-    for i, ch in enumerate(label):
-        x = gauche - 3 + i
-        if 0 <= x < W and top - 2 >= 0:
-            grille[top - 2][x] = (ch, _txt(75, 135, 100), None)
+                    v = 150 if sous_haut else 224
+                    col = [v, min(255, v + 6), min(255, v + 14)]
+                    vn = math.sin(ex * 0.5 + dy * 1.7) + 0.6 * math.sin(ex * 1.3 - dy * 0.5 + 1.0)
+                    if vn > 1.5 and abs(nx) > 0.45:   # veines rares, plutôt vers les côtés
+                        col = [min(255, col[0] + 6), int(col[1] * 0.80), int(col[2] * 0.80)]
+                    ch, col = "█", tuple(col)
+            if bord_paup:                            # anti-aliasing du contour
+                ch = "▒" if r <= Ri else "░"
+            row[x] = (ch, _txt(*col), None)
+
+    # --- reflet spéculaire (lumière en haut-gauche de l'iris) + reflet secondaire ---
+    for ax, ay, c in ((0, 0, (255, 255, 255)), (1, 0, (236, 246, 255)),
+                      (0, 1, (224, 238, 252)), (1, 1, (205, 225, 245))):
+        hx = int(icx - Ri * 0.8) + ax
+        hy = int(icy - Ri * 0.5) + ay
+        if 0 <= hx < W and 0 <= hy < H and abs(hy - cy) <= lid(hx - cx):
+            grille[hy][hx] = ("█", _txt(*c), None)
+    sx, sy = int(icx + Ri * 0.6), int(icy + Ri * 0.5)
+    if 0 <= sx < W and 0 <= sy < H and abs(sy - cy) <= lid(sx - cx):
+        grille[sy][sx] = ("▓", _txt(120, 150, 180), None)
+
+    # --- paupières + cils ---
+    for x in range(max(cx - Wx, 0), min(cx + Wx + 1, W)):
+        ex = x - cx
+        l = lid(ex)
+        if l < 0.5:
+            continue
+        yt = cy - int(round(l))                      # paupière haute
+        yb = cy + int(round(l))                      # paupière basse
+        if 0 <= yt < H:
+            grille[yt][x] = ("▀", _txt(70, 46, 40), None)
+        if 0 <= yb < H:
+            grille[yb][x] = ("▄", _txt(55, 34, 30), None)
+        if ouv > 0.75 and ex % 3 == 0:               # cils (œil ouvert)
+            cl = yt - 1
+            if 0 <= cl < H and abs((cl) - cy) > l:
+                pointe = "╲" if ex < -Wx * 0.3 else ("╱" if ex > Wx * 0.3 else "│")
+                grille[cl][x] = (pointe, _txt(35, 24, 22), None)
+    # --- pli de la paupière (trait sombre discret au-dessus) ---
+    if ouv > 0.6:
+        for x in range(max(cx - Wx, 0), min(cx + Wx + 1, W)):
+            l = lid(x - cx)
+            yc = cy - int(round(l)) - 2
+            if 0 <= yc < H and grille[yc][x][0] == " ":
+                grille[yc][x] = ("─", _txt(26, 30, 40), None)
 
 
-def _intro_glitch(W, H):
-    """Chaque mot se « décode » : un scan balaie de gauche à droite, du bruit
-    devant, le mot net derrière, avec cadre, label de module et aberration."""
-    if not _MOTS_GLITCH:
+def _poser_centre(grille, W, H, row, s, couleur):
+    if not (0 <= row < H):
         return
-    couleurs = [VERT, CYAN, OR, MAGENTA]
-    cy0 = H // 2
-    n = len(_MOTS_GLITCH)
-    for idx, (mot, art) in enumerate(_MOTS_GLITCH):
-        h = len(art)
-        w = max(len(l) for l in art)
-        top = max(cy0 - h // 2, 0)
-        gauche = max((W - w) // 2, 0)
-        couleur = couleurs[idx % len(couleurs)]
-        label = f"> MODULE {idx + 1:02d}/{n:02d}  [{mot}]"
-
-        # --- décodage : le scan révèle le mot ---
-        for sx in range(-2, w + 3):
-            grille = [[(" ", None, None) for _ in range(W)] for _ in range(H)]
-            for i, ligne in enumerate(art):
-                y = top + i
-                if not (0 <= y < H):
-                    continue
-                for j, ch in enumerate(ligne):
-                    x = gauche + j
-                    if not (0 <= x < W):
-                        continue
-                    if ch == " ":
-                        if j > sx and random.random() < 0.05:    # bruit léger dans les vides
-                            grille[y][x] = (random.choice(_GLITCH_GARBAGE), _txt(28, 66, 50), None)
-                        continue
-                    if j < sx - 1:                               # déjà révélé : net
-                        c = random.choice(_GLITCH_GARBAGE) if random.random() < 0.03 else ch
-                        grille[y][x] = (c, couleur, None)
-                    elif j <= sx + 1:                            # ligne de scan : éclat + chroma
-                        grille[y][x] = (ch, _txt(240, 255, 250), None)
-                        if 0 <= x + 1 < W:
-                            grille[y][x + 1] = (ch, MAGENTA, None)
-                    elif random.random() < 0.55:                # pas encore : bruit
-                        grille[y][x] = (random.choice(_GLITCH_GARBAGE), _txt(55, 115, 85), None)
-            _cadre_mot(grille, W, H, gauche, top, w, h, _txt(70, 115, 95), label)
-            _ecrire(_rendu_grille(grille))
-            time.sleep(0.02)
-
-        # --- tenue nette + un bref burst glitch ---
-        for fr in range(6):
-            grille = [[(" ", None, None) for _ in range(W)] for _ in range(H)]
-            burst = fr == 3
-            dx = random.choice((-2, 2)) if burst else 0
-            for i, ligne in enumerate(art):
-                y = top + i
-                for j, ch in enumerate(ligne):
-                    if ch == " ":
-                        continue
-                    x = gauche + j
-                    if burst and 0 <= x + dx < W:
-                        grille[y][x + dx] = (ch, CYAN if dx < 0 else MAGENTA, None)
-                    if 0 <= x < W:
-                        grille[y][x] = (ch, couleur, None)
-            _cadre_mot(grille, W, H, gauche, top, w, h, couleur, label)
-            _ecrire(_rendu_grille(grille))
-            time.sleep(0.04)
-        _ecrire(_rendu_grille([[(" ", None, None) for _ in range(W)] for _ in range(H)]))
-        time.sleep(0.03)
+    x0 = max((W - len(s)) // 2, 0)
+    for i, ch in enumerate(s):
+        if 0 <= x0 + i < W:
+            grille[row][x0 + i] = (ch, couleur, None)
 
 
-def _intro_decrypt(W, H):
-    """Barre de décryptage qui se remplit, avec hex qui défile — avant l'accès."""
-    cy = H // 2
-    titre = "DÉCRYPTAGE DU COFFRE · AES-256"
-    barw = min(W - 24, 52)
-    gx = max((W - barw) // 2, 0)
-    octets = max((W - 12) // 3, 8)
-    frames = 34
-    for fr in range(frames):
-        prog = fr / (frames - 1)
-        grille = [[(" ", None, None) for _ in range(W)] for _ in range(H)]
-        tx = max((W - len(titre)) // 2, 0)              # titre
-        for i, ch in enumerate(titre):
-            grille[cy - 3][tx + i] = (ch, CYAN, None)
-        for r in range(1, 4):                            # hex qui défile dessous
-            s = " ".join(f"{random.randint(0, 255):02X}" for _ in range(octets))
-            hx = max((W - len(s)) // 2, 0)
-            for i, ch in enumerate(s):
-                if 0 <= hx + i < W:
-                    grille[cy + 1 + r][hx + i] = (ch, _txt(40, 115, 72), None)
-        rempli = int(prog * barw)                        # barre
-        if gx - 2 >= 0:
-            grille[cy][gx - 2] = ("[", DISCRET, None)
-        if gx + barw + 1 < W:
-            grille[cy][gx + barw + 1] = ("]", DISCRET, None)
-        for i in range(barw):
-            x = gx + i
-            if 0 <= x < W:
-                if i < rempli:
-                    grille[cy][x] = ("█", VERT, None)
-                elif i == rempli:
-                    grille[cy][x] = ("▓", _txt(180, 255, 200), None)
-                else:
-                    grille[cy][x] = ("░", _txt(35, 80, 58), None)
-        pct = f"{int(prog * 100):3d}%"                   # pourcentage
-        for i, ch in enumerate(pct):
-            x = gx + barw + 3 + i
-            if 0 <= x < W:
-                grille[cy][x] = (ch, VERT, None)
-        _ecrire(_rendu_grille(grille))
-        time.sleep(0.04)
-    time.sleep(0.12)
-
-
-def _intro_oeil(W, H):
-    """Un œil réaliste : blanc de l'œil, iris bleu à fibres, pupille noire,
-    reflet lumineux. Il cligne, s'ouvre, puis REGARDE autour (vivant)."""
-    cx, cy = W // 2, H // 2
-    Wx = min(cx - 2, 34)                        # demi-largeur de l'œil (colonnes)
-    Hy = min(cy - 1, 9)                         # demi-hauteur (lignes)
-    if Wx < 8 or Hy < 3:
+def _poser_segments(grille, W, H, row, segments):
+    if not (0 <= row < H):
         return
-    Ri = Hy - 0.5                               # rayon de l'iris (unités y)
-    Rp0 = Ri * 0.42                             # rayon de pupille au repos
-    amp_x = max(Wx - Ri * 2 - 2, 2)            # amplitude du regard (colonnes)
-    amp_y = max(Hy - Ri - 1, 1)
+    total = sum(len(t) for t, _ in segments)
+    x = max((W - total) // 2, 0)
+    for t, couleur in segments:
+        for ch in t:
+            if 0 <= x < W:
+                grille[row][x] = (ch, couleur, None)
+            x += 1
 
-    def paup(ex, ouv):                          # demi-hauteur de l'œil (amande) à la colonne ex
-        return ouv * Hy * (max(0.0, 1 - (ex / Wx) ** 2)) ** 0.72
 
-    # ouverture : deux clignements, puis grand ouvert ; + un clignement au milieu
-    cles = [(0.0, 0.0), (0.07, 0.5), (0.12, 0.05), (0.19, 0.55), (0.25, 0.05),
-            (0.40, 1.0), (0.62, 1.0), (0.66, 0.12), (0.70, 1.0), (1.0, 1.0)]
+def _poser_slogan(grille, W, H, texte):
+    _, _, _, _, _, r_slogan, _ = _oeil_geo(W, H)
+    _poser_centre(grille, W, H, r_slogan, texte, _txt(130, 245, 185))
 
-    def interp(t, ks):
-        for i in range(len(ks) - 1):
-            (t0, v0), (t1, v1) = ks[i], ks[i + 1]
-            if t <= t1:
-                k = (t - t0) / (t1 - t0) if t1 > t0 else 1.0
-                return v0 + (v1 - v0) * k
-        return ks[-1][1]
 
-    frames = 66
+def _poser_invite(grille, W, H, allume=True):
+    _, _, _, _, _, _, r_invite = _oeil_geo(W, H)
+    ent = _txt(120, 240, 150) if allume else _txt(60, 120, 80)
+    ech = _txt(240, 110, 110) if allume else _txt(120, 60, 60)
+    gris = _txt(120, 130, 140)
+    _poser_segments(grille, W, H, r_invite, [
+        ("[ENTRÉE]", ent), (" entrer dans la partie      ", gris),
+        ("[ÉCHAP]", ech), (" quitter", gris),
+    ])
+
+
+def _interp(t, ks):
+    for i in range(len(ks) - 1):
+        (t0, v0), (t1, v1) = ks[i], ks[i + 1]
+        if t <= t1:
+            k = (t - t0) / (t1 - t0) if t1 > t0 else 1.0
+            return v0 + (v1 - v0) * k
+    return ks[-1][1]
+
+
+def _oeil_ouverture(W, H, kb):
+    """Ouverture LONGUE et détaillée : deux clignements puis grande ouverture,
+    avec un léger balayage du regard. Renvoie 'enter'/'esc' si on appuie, sinon None."""
+    cx, cy, Wx, Hy, Ri, _, _ = _oeil_geo(W, H)
+    cles = [(0.00, 0.0), (0.12, 0.0), (0.18, 0.55), (0.24, 0.05), (0.33, 0.65),
+            (0.39, 0.06), (0.52, 1.0), (0.72, 1.0), (0.76, 0.12), (0.82, 1.0), (1.0, 1.0)]
+    frames = 120                                     # long
     for f in range(frames):
         t = f / (frames - 1)
-        ouv = interp(t, cles)
-        # le regard balaie (droite, gauche, bas) quand l'œil est ouvert
-        look = max(0.0, min((t - 0.30) / 0.55, 1.0))
-        gx = amp_x * math.sin(t * 7.0) * look
-        gy = amp_y * math.sin(t * 4.3 + 1) * look * 0.7
-        if t > 0.9:                              # recentre le regard à la fin
-            gx *= (1 - t) / 0.1
-            gy *= (1 - t) / 0.1
-        Rp = Rp0 * (1 + 0.12 * math.sin(f * 0.4))    # légère dilatation
-        grille = [[(" ", None, None) for _ in range(W)] for _ in range(H)]
-        for y in range(max(cy - Hy - 1, 0), min(cy + Hy + 2, H)):
-            dy = y - cy
-            for x in range(max(cx - Wx, 0), min(cx + Wx + 1, W)):
-                ex = x - cx
-                lid = paup(ex, ouv)
-                if abs(dy) > lid + 0.001:
-                    continue
-                dxc = (x - (cx + gx)) / 2.0           # repère centré sur le regard
-                dyc = (y - (cy + gy))
-                r = math.hypot(dxc, dyc)
-                haut = dy < -lid * 0.45              # zone sous la paupière haute (ombre)
-                if r <= Rp:                           # pupille (noire)
-                    grille[y][x] = (" ", None, _fond(2, 4, 8))
-                elif r <= Ri:                         # iris bleu à fibres
-                    th = math.atan2(dyc, dxc)
-                    fib = 0.5 + 0.5 * math.sin(th * 16 + r * 0.7)
-                    bord = r / Ri
-                    if bord > 0.9:                    # anneau limbique sombre
-                        col = (20, 45, 85)
-                    else:
-                        base = 1 - 0.35 * bord
-                        col = (int((45 + 45 * fib) * base), int((135 + 70 * fib) * base),
-                               int((215 + 40 * fib) * base))
-                    if haut:
-                        col = tuple(int(c * 0.72) for c in col)
-                    ch = "▓" if fib > 0.6 else ("▒" if fib > 0.3 else "░")
-                    grille[y][x] = (ch, _txt(*col), None)
-                else:                                 # blanc de l'œil (sclère)
-                    v = 150 if haut else 212          # ombre de la paupière haute
-                    coin = abs(ex) > Wx * 0.82
-                    col = (200, 150, 150) if coin else (v, v + 8, v + 16)
-                    grille[y][x] = ("░" if coin else "▓", _txt(*col), None)
-        # reflet spéculaire (lumière fixe, en haut à gauche de l'iris)
-        hx = int(cx + gx - Ri * 0.9)
-        hy = int(cy + gy - Ri * 0.5)
-        for ax, ay in ((0, 0), (1, 0), (0, 1)):
-            x, y = hx + ax, hy + ay
-            if 0 <= x < W and 0 <= y < H and abs(y - cy) <= paup(x - cx, ouv):
-                grille[y][x] = ("█", _txt(250, 252, 255), None)
-        # paupières (traits) + cils
-        for x in range(max(cx - Wx, 0), min(cx + Wx + 1, W)):
-            lid = paup(x - cx, ouv)
-            if lid < 0.3:
-                continue
-            for sgn in (-1, 1):
-                yy = cy + int(round(sgn * lid))
-                if 0 <= yy < H:
-                    grille[yy][x] = ("▄" if sgn < 0 else "▀", _txt(120, 90, 80), None)
+        ouv = _interp(t, cles)
+        look = max(0.0, min((t - 0.50) / 0.45, 1.0))
+        gx = (Wx * 0.16) * math.sin(t * 5.0) * look
+        gy = (Hy * 0.12) * math.sin(t * 3.1 + 1) * look
+        if t > 0.92:                                 # recentre le regard à la fin
+            gx *= (1 - t) / 0.08
+            gy *= (1 - t) / 0.08
+        dil = 1.0 + 0.06 * math.sin(f * 0.22)
+        grille = _nouvelle_grille(W, H)
+        _dessiner_oeil(grille, W, H, ouv, gx, gy, dil, f)
         _ecrire(_rendu_grille(grille))
+        k = kb.get()
+        if k:
+            return k
         time.sleep(0.045)
-    # éclat d'activation : l'iris s'illumine une fraction de seconde
-    for inten in (1.0, 0.5):
-        grille = [[(" ", None, None) for _ in range(W)] for _ in range(H)]
-        for y in range(max(cy - Hy, 0), min(cy + Hy + 1, H)):
-            for x in range(max(cx - Wx, 0), min(cx + Wx + 1, W)):
-                if math.hypot((x - cx) / 2.0, y - cy) <= Ri:
-                    v = int(255 * inten)
-                    grille[y][x] = ("▓", _txt(v, v, 255), None)
+    return None
+
+
+def _oeil_revele(W, H, slogan, kb):
+    """Le slogan se décode sous l'œil, puis l'invite apparaît."""
+    frames = 18
+    for f in range(frames):
+        p = (f + 1) / frames
+        grille = _nouvelle_grille(W, H)
+        _dessiner_oeil(grille, W, H, 1.0, 0.0, 0.0, 1.0 + 0.05 * math.sin(f * 0.3), 900 + f)
+        n = int(len(slogan) * p)
+        aff = "".join(slogan[i] if i < n else random.choice(_GARB) for i in range(len(slogan)))
+        _poser_slogan(grille, W, H, aff)
+        if p > 0.55:
+            _poser_invite(grille, W, H, allume=True)
         _ecrire(_rendu_grille(grille))
+        k = kb.get()
+        if k:
+            return k
         time.sleep(0.05)
+    return None
 
 
-def intro_animee():
-    """Pluie de code « Matrix » plein écran, d'où émerge le logo glacé qui
-    se révèle par balayage avec un reflet. Effet d'ouverture « wow »."""
-    if not ANIMATIONS or LOGO_COLS == 0:
-        return
+def _oeil_attente(W, H, slogan, kb):
+    """L'œil reste vivant (clignements, micro-regard) et attend ENTRÉE / ÉCHAP."""
+    cx, cy, Wx, Hy, Ri, _, _ = _oeil_geo(W, H)
+    f = 0
+    prochain_clin = random.randint(55, 110)
+    clin = [0.55, 0.12, 0.0, 0.0, 0.15, 0.55, 1.0]
+    while True:
+        ouv = 1.0
+        bf = f - prochain_clin
+        if 0 <= bf < len(clin):
+            ouv = clin[bf]
+        elif bf >= len(clin):
+            prochain_clin = f + random.randint(55, 130)
+        gx = (Wx * 0.09) * math.sin(f * 0.040)
+        gy = (Hy * 0.06) * math.sin(f * 0.029 + 0.5)
+        dil = 1.0 + 0.07 * math.sin(f * 0.11)
+        grille = _nouvelle_grille(W, H)
+        _dessiner_oeil(grille, W, H, ouv, gx, gy, dil, f)
+        _poser_slogan(grille, W, H, slogan)
+        _poser_invite(grille, W, H, allume=(f // 7) % 2 == 0)   # l'invite pulse doucement
+        _ecrire(_rendu_grille(grille))
+        k = kb.get()
+        if k == "enter":
+            return True
+        if k == "esc":
+            return False
+        f += 1
+        time.sleep(0.06)
+
+
+def _accueil_oeil(modele):
+    """Anime l'œil, montre le slogan + l'invite, puis attend la touche.
+    Renvoie True (entrer dans le menu) ou False (quitter)."""
     global _intro_offset, _intro_voffset
+    _intro_offset = _intro_voffset = 0
     taille = _Taille()
-    W = max(min(taille.columns - 1, 400), LOGO_COLS + 6)   # remplit toute la largeur de la fenêtre
-    H = max(min(taille.lines - 1, 120), LOGO_ROWS + 10)    # remplit toute la hauteur de la fenêtre
-    # centre tout le bloc d'intro (W×H) dans la fenêtre réelle, pour qu'il ne
-    # reste pas collé en haut à gauche quand le terminal est agrandi
-    _intro_offset = max((taille.columns - 1 - W) // 2, 0)
-    _intro_voffset = max((taille.lines - 1 - H) // 2, 0)
-    gauche = max((W - LOGO_COLS) // 2, 0)
-    haut_logo = max((H - LOGO_ROWS) // 2 - 1, 0)
-
-    rng = random.Random(os.environ.get("BJ_SEED"))
-    # une goutte de pluie par colonne : [tête (float), vitesse, longueur] ; longueur 0 = inactive
-    tetes = []
-    for _ in range(W):
-        if rng.random() < PLUIE_DENSITE:
-            tetes.append([rng.uniform(-H, 0), rng.uniform(0.7, 1.9) * PLUIE_VITESSE,
-                          rng.randint(6, max(7, H - 1))])
-        else:
-            tetes.append([0.0, 0.0, 0])
-
-    R1 = 22                                  # pluie seule
-    reveal = LOGO_COLS // 4 + 2              # révélation du logo
-    hold = 26                                # logo complet + reflet, la pluie s'efface
-    total = R1 + reveal + hold
-
+    W = max(min(taille.columns - 1, 400), 24)
+    H = max(min(taille.lines - 1, 120), 14)
+    slogan = random.choice(_SLOGANS)
     _cacher_curseur()
     try:
-        _intro_boot(W, H)                    # journal de démarrage « hacker »
-        _intro_oeil(W, H)                    # l'« œil » qui s'ouvre + enseignes qui tournent
-        _intro_glitch(W, H)                  # mots « hacker » qui se décodent (scan)
-        _intro_decrypt(W, H)                 # barre de décryptage + hex
-        _intro_granted(W, H)                 # panneau « ACCÈS AUTORISÉ ✓ »
-        for f in range(total):
-            grille = [[(" ", None, None) for _ in range(W)] for _ in range(H)]
-
-            # fondu de la pluie une fois le logo révélé
-            if f < R1 + reveal:
-                fade = 1.0
-            else:
-                fade = max(0.18, 1.0 - (f - (R1 + reveal)) / hold)
-
-            # ----- pluie de code -----
-            for x in range(W):
-                t = tetes[x]
-                if t[2] == 0:
-                    continue
-                t[0] += t[1]
-                if t[0] - t[2] > H + 1:
-                    t[0] = rng.uniform(-H, 0.0)
-                    t[1] = rng.uniform(0.7, 1.9) * PLUIE_VITESSE
-                    t[2] = rng.randint(6, max(7, H - 1))
-                tete_y = int(t[0])
-                for k in range(t[2]):
-                    y = tete_y - k
-                    if 0 <= y < H:
-                        ch = CARS_PLUIE[(x * 7 + y * 13 + f) % len(CARS_PLUIE)]
-                        if k == 0:
-                            col = _txt(200, 255, 220)               # tête brillante
-                        else:
-                            v = fade * (1 - k / t[2])
-                            col = _txt(int(35 + 110 * v), int(120 + 135 * v), int(70 + 110 * v))
-                        grille[y][x] = (ch, col, None)
-
-            # ----- logo qui émerge -----
-            if f < R1:
-                jusqua, reflet = -1, None
-            elif f < R1 + reveal:
-                jusqua = (f - R1) * 4
-                reflet = jusqua
-            else:
-                jusqua = LOGO_COLS
-                reflet = (f - (R1 + reveal)) * 6 - 6
-
-            if jusqua >= 0:
-                for cr in range(LOGO_ROWS):
-                    for x in range(min(jusqua + 1, LOGO_COLS)):
-                        if not (LOGO_MASQUE[2 * cr][x] or LOGO_MASQUE[2 * cr + 1][x]):
-                            continue
-                        fg = _txt(*_ajuste(LOGO[2 * cr][x], 1.0, x, reflet, 4))
-                        bg = _fond(*_ajuste(LOGO[2 * cr + 1][x], 1.0, x, reflet, 4))
-                        grille[haut_logo + cr][gauche + x] = ("▀", fg, bg)
-
-            _ecrire(_rendu_grille(grille))
-            time.sleep(0.05)
+        with _Clavier() as kb:
+            r = _oeil_ouverture(W, H, kb)
+            if r == "esc":
+                return False
+            if r != "enter":
+                r = _oeil_revele(W, H, slogan, kb)
+                if r == "esc":
+                    return False
+            if r == "enter":
+                return True
+            return _oeil_attente(W, H, slogan, kb)
     finally:
         _montrer_curseur()
 
@@ -1117,11 +1063,14 @@ def _distribue_blackjack():
 
 
 def ecran_accueil(modele):
+    """Écran de départ : seulement l'œil + slogan + invite ENTRÉE/ÉCHAP.
+    Renvoie True si on entre dans le menu, False si l'utilisateur quitte (ÉCHAP)."""
     initialiser()
-    if ANIMATIONS:
-        intro_animee()           # boot, œil, glitch, ACCÈS AUTORISÉ, pluie, logo
-        _distribue_blackjack()   # distribution d'une main gagnante (21)
+    if ANIMATIONS and sys.stdout.isatty():
+        if not _accueil_oeil(modele):      # ÉCHAP → on quitte proprement
+            return False
     afficher_menu(modele)
+    return True
 
 
 def ecran_sortie():
