@@ -4,7 +4,7 @@ title Black Jack
 color 02
 cd /d "%~dp0"
 
-set "BASE=llama3.1:8b-instruct-q4_K_M"
+set "BASE=qwen2.5-coder:7b"
 
 where python >nul 2>nul || (
     echo Python introuvable. Installe-le depuis https://www.python.org et coche "Add to PATH".

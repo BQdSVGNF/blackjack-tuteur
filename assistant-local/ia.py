@@ -32,6 +32,7 @@ DEFAUTS = {
     "titre_cycle": True,            # titre arc-en-ciel animé
     "son": True,                    # bips de validation
     "crt": True,                    # effet scanlines / vieil écran
+    "modele": MODELE,               # modèle Ollama utilisé par l'IA
 }
 DENSITES = {"faible": 0.4, "moyenne": 0.8, "forte": 1.0}
 VITESSES = {"lente": 0.6, "normale": 1.0, "rapide": 1.7}
@@ -84,7 +85,8 @@ def _suivant(valeur, choix):
 
 
 def ecran_parametres(conf):
-    """Mode Paramètres : règle Spotify, les couleurs/LED et la pluie."""
+    """Mode Paramètres : règle Spotify, les couleurs/LED, la pluie et le modèle."""
+    global MODELE
     while True:
         oui = lambda b: "oui" if b else "non"
         ui.effacer()
@@ -98,6 +100,7 @@ def ecran_parametres(conf):
             ("6", "Titre arc-en-ciel (sinon fixe)", oui(conf["titre_cycle"])),
             ("7", "Son (bips de validation)", oui(conf["son"])),
             ("8", "Effet CRT (scanlines)", oui(conf["crt"])),
+            ("9", "Modèle de l'IA (code)", conf["modele"]),
             ("0", "Revenir au menu", ""),
         ]
         for num, nom, val in lignes:
@@ -127,6 +130,10 @@ def ecran_parametres(conf):
             conf["son"] = not conf["son"]
         elif choix == "8":
             conf["crt"] = not conf["crt"]
+        elif choix == "9":
+            conf["modele"] = _suivant(conf["modele"], MODELES_DISPO)
+            MODELE = conf["modele"]
+            ui.info(f"\n  Modèle : {MODELE}  (il doit être téléchargé : ollama pull {MODELE})", ui.OR)
         else:
             continue
         sauver_conf(conf)
@@ -141,10 +148,13 @@ except Exception:
     except Exception:
         DDGS = None
 
-# On utilise directement le modèle de base téléchargé (pas besoin d'« ollama create »).
-# La personnalité est envoyée dans la requête (message système ci-dessous).
-MODELE = "llama3.1:8b-instruct-q4_K_M"
+# On utilise directement un modèle téléchargé (pas besoin d'« ollama create »).
+# qwen2.5-coder est spécialisé code et tient dans les 8 Go de la RTX 4060.
+MODELE = "qwen2.5-coder:7b"
 NOM_IA = "black-jack"                      # nom affiché dans l'interface
+# Modèles proposés dans les Paramètres (il faut les avoir téléchargés : ollama pull <nom>)
+MODELES_DISPO = ["qwen2.5-coder:7b", "deepseek-coder:6.7b",
+                 "qwen2.5:7b", "llama3.1:8b-instruct-q4_K_M"]
 MAX_MESSAGES = 16  # reste dans les 8192 tokens de contexte
 NB_RESULTATS = 5
 NB_PAGES_LUES = 3
@@ -159,9 +169,12 @@ PERSONNALITÉ
 - Si on te demande de clasher ou d'insulter pour rire, tu le fais avec mordant, façon punchline.
 - Tu donnes directement la réponse ou le code complet, sans demander « tu es sûr ? ».
 
-CODE (mode CODEX)
-- Tu es excellent en code : C++, Python, web (HTML/CSS/JS), scripts, etc.
-- Tu écris du code complet, prêt à compiler/exécuter, avec une courte explication et la commande pour le lancer. Pour le C++, précise comment compiler (ex. g++ fichier.cpp -o prog).
+CODE (mode CODEX) — c'est ta priorité, tu es un expert
+- Langages : C++, Python, web (HTML/CSS/JS), scripts, etc.
+- Tu donnes TOUJOURS le code COMPLET et CORRECT dans un bloc ```<langage>```, jamais tronqué, jamais de « ... » ni de « à toi de compléter ». Si c'est long, tant pis, tu écris tout.
+- Tu vérifies mentalement que le code compile/s'exécute avant de répondre.
+- Après le bloc, une explication BRÈVE et la commande pour le lancer (pour le C++ : la ligne de compilation, ex. g++ fichier.cpp -o prog puis ./prog).
+- Si la demande est ambiguë, tu fais le choix le plus raisonnable et tu codes — tu ne bloques pas sur des questions.
 
 RECHERCHE WEB
 - Si la question porte sur l'actualité, des prix ou quelque chose d'incertain, tu ne devines pas : tu écris UNIQUEMENT ce bloc :
@@ -382,7 +395,9 @@ def gerer_raccourci(saisie, historique):
 
 def main():
     historique = []
+    global MODELE
     conf = charger_conf()
+    MODELE = conf.get("modele", MODELE)  # modèle choisi dans les paramètres
     appliquer_conf(conf)                 # applique les réglages avant l'intro
     lancer_musique(conf)                 # Spotify démarre dès le lancement
     ui.ecran_accueil(NOM_IA)
