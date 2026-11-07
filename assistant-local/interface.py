@@ -500,7 +500,49 @@ def _oeil_geo(W, H):
     return cx, cy, Wx, Hy, Ri, r_slogan, r_invite
 
 
-def _dessiner_oeil(grille, W, H, ouv, gx, gy, dil, f):
+_oeil_seed = 0                                      # fixe les veines pour tout un lancement
+
+
+def _dessiner_veines(grille, W, H, cx, cy, Wx, Hy, Ri, icx, icy, ouv, intensite=1.0):
+    """Veines rouges (œil injecté de sang) sur le blanc de l'œil : des coins vers
+    l'iris, avec ramifications. Stables d'une frame à l'autre grâce à _oeil_seed."""
+    if intensite <= 0 or ouv < 0.45:
+        return
+    rng = random.Random(_oeil_seed)
+
+    def lid(ex):
+        nx = ex / Wx
+        return 0.0 if abs(nx) >= 1.0 else ouv * Hy * (1.0 - nx * nx) ** 0.60
+
+    def sur_sclere(x, y):
+        l = lid(x - cx)
+        if l < 0.6 or abs(y - cy) > l - 0.5:
+            return False
+        return math.hypot((x - icx) / _ASP, y - icy) > Ri + 0.4
+
+    def trace(x, y, ang, pas, prof):
+        for i in range(pas):
+            ang += rng.uniform(-0.45, 0.45)
+            x += math.cos(ang) * 1.25
+            y += math.sin(ang) * 0.62
+            xi, yi = int(round(x)), int(round(y))
+            if not (0 <= xi < W and 0 <= yi < H) or not sur_sclere(xi, yi):
+                return
+            fade = 1.0 - i / max(pas, 1) * 0.65
+            rr = min(255, int((150 + 95 * intensite) * fade))
+            grille[yi][xi] = ("█", _txt(rr, int(34 * fade), int(32 * fade)), None)
+            if prof == 0 and rng.random() < 0.12 and i > 1:      # une ramification
+                trace(x, y, ang + rng.uniform(-1.1, 1.1), rng.randint(3, 7), 1)
+
+    for _ in range(rng.randint(6, 9)):
+        cote = rng.choice((-1, 1))
+        sx = cx + cote * rng.uniform(Wx * 0.60, Wx * 0.95)
+        sy = cy + rng.uniform(-0.55, 0.55) * Hy
+        ang = math.atan2(cy - sy, (cx - sx)) + rng.uniform(-0.6, 0.6)
+        trace(sx, sy, ang, rng.randint(max(int(Wx * 0.35), 4), max(int(Wx * 0.75), 6)), 0)
+
+
+def _dessiner_oeil(grille, W, H, ouv, gx, gy, dil, f, veines=1.0):
     """Dessine un œil réaliste et détaillé dans la grille.
     ouv 0→1 = ouverture des paupières ; gx,gy = décalage du regard ; dil = pupille."""
     cx, cy, Wx, Hy, Ri, _, _ = _oeil_geo(W, H)
@@ -569,6 +611,9 @@ def _dessiner_oeil(grille, W, H, ouv, gx, gy, dil, f):
             if bord_paup:                            # anti-aliasing du contour
                 ch = "▒" if r <= Ri else "░"
             row[x] = (ch, _txt(*col), None)
+
+    # --- veines rouges (œil injecté de sang) sur la sclère ---
+    _dessiner_veines(grille, W, H, cx, cy, Wx, Hy, Ri, icx, icy, ouv, veines)
 
     # --- reflet spéculaire (lumière en haut-gauche de l'iris) + reflet secondaire ---
     for ax, ay, c in ((0, 0, (255, 255, 255)), (1, 0, (236, 246, 255)),
@@ -700,6 +745,101 @@ def _oeil_revele(W, H, slogan, kb):
     return None
 
 
+_SCAN_HUD = ["> ANALYSE RÉTINIENNE", "> IDENTITÉ : INCONNUE", "> MENACE   : ÉLEVÉE"]
+
+
+def _poser_gauche(grille, W, H, row, colg, s, couleur):
+    if not (0 <= row < H):
+        return
+    for i, ch in enumerate(s):
+        if 0 <= colg + i < W:
+            grille[row][colg + i] = (ch, couleur, None)
+
+
+def _oeil_reticule(grille, W, H, cx, cy, Wx, Hy, serre, couleur):
+    """Crochets de visée aux quatre coins de l'œil (serre 0 = large … 1 = collé)."""
+    mx = int(Wx + 5 - serre * 4)
+    my = int(Hy + 2 - serre * 1)
+    coins = {(-1, -1): "┌", (1, -1): "┐", (-1, 1): "└", (1, 1): "┘"}
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            x0, y0 = cx + sx * mx, cy + sy * my
+            if not (0 <= y0 < H and 0 <= x0 < W):
+                continue
+            grille[y0][x0] = (coins[(sx, sy)], couleur, None)
+            for d in range(1, 5):                        # bras horizontal
+                x = x0 - sx * d
+                if 0 <= x < W:
+                    grille[y0][x] = ("─", couleur, None)
+            for d in range(1, 3):                        # bras vertical
+                y = y0 + sy * d
+                if 0 <= y < H:
+                    grille[y][x0] = ("│", couleur, None)
+
+
+def _oeil_scan(W, H, kb):
+    """Scan de l'iris + lecture HUD, puis la pupille se contracte (VERROUILLÉ)."""
+    cx, cy, Wx, Hy, Ri, r_slogan, _ = _oeil_geo(W, H)
+    cyan, rouge, vif = _txt(90, 210, 230), _txt(240, 70, 70), _txt(170, 255, 245)
+    frames = 60
+    for f in range(frames):
+        p = f / (frames - 1)
+        verrou = p > 0.72
+        if not verrou:
+            dil = 1.08 + 0.05 * math.sin(f * 0.4)
+        else:
+            dil = 1.08 - 0.62 * min((p - 0.72) / 0.28, 1.0)     # contraction nette
+        gx = (Wx * 0.05) * math.sin(f * 0.2)
+        grille = _nouvelle_grille(W, H)
+        _dessiner_oeil(grille, W, H, 1.0, gx, 0.0, dil, 700 + f,
+                       veines=1.0 + (1.8 if verrou else 0.0))
+        serre = 1.0 if verrou else min(p / 0.72, 1.0)
+        _oeil_reticule(grille, W, H, cx, cy, Wx, Hy, serre, rouge if verrou else cyan)
+        if not verrou:                                   # ligne de scan qui balaie
+            sy = int(cy - Hy + (f % 18) / 18.0 * 2 * Hy)
+            for x in range(max(cx - Wx, 0), min(cx + Wx + 1, W)):
+                if 0 <= sy < H and grille[sy][x][0] != " ":
+                    grille[sy][x] = (grille[sy][x][0], vif, None)
+        nb = min(len(_SCAN_HUD), int(p / 0.65 * len(_SCAN_HUD)) + 1)
+        for i in range(nb):                              # HUD en haut à gauche
+            _poser_gauche(grille, W, H, 1 + i, 2, _SCAN_HUD[i], cyan)
+        if verrou:
+            _poser_centre(grille, W, H, r_slogan, "●  CIBLE VERROUILLÉE  ●", rouge)
+        _ecrire(_rendu_grille(grille))
+        k = kb.get()
+        if k:
+            return k
+        time.sleep(0.05)
+    time.sleep(0.18)
+    return None
+
+
+def _oeil_zoom(W, H):
+    """Transition : la caméra plonge dans la pupille (le noir envahit l'écran)."""
+    cx, cy, Wx, Hy, Ri, _, _ = _oeil_geo(W, H)
+    maxr = math.hypot(W / _ASP, H) + 2
+    noir = _fond(2, 3, 8)
+    frames = 20
+    for f in range(frames):
+        p = (f + 1) / frames
+        grille = _nouvelle_grille(W, H)
+        _dessiner_oeil(grille, W, H, 1.0, 0.0, 0.0, 1.0 + p * 7.0, 3000 + f, veines=1.0)
+        rad = (p ** 1.7) * maxr                          # disque noir qui grandit
+        if rad > 0.5:
+            ry = int(rad)
+            for y in range(max(cy - ry, 0), min(cy + ry + 1, H)):
+                d2 = rad * rad - (y - cy) ** 2
+                if d2 <= 0:
+                    continue
+                demi = _ASP * math.sqrt(d2)
+                rowg = grille[y]
+                for x in range(max(int(cx - demi), 0), min(int(cx + demi) + 1, W)):
+                    rowg[x] = (" ", None, noir)
+        _ecrire(_rendu_grille(grille))
+        time.sleep(0.03)
+    _ecrire(BASE + "\x1b[2J\x1b[H")
+
+
 def _oeil_attente(W, H, slogan, kb):
     """L'œil reste vivant (clignements, micro-regard) et attend ENTRÉE / ÉCHAP."""
     cx, cy, Wx, Hy, Ri, _, _ = _oeil_geo(W, H)
@@ -722,36 +862,39 @@ def _oeil_attente(W, H, slogan, kb):
         _poser_invite(grille, W, H, allume=(f // 7) % 2 == 0)   # l'invite pulse doucement
         _ecrire(_rendu_grille(grille))
         k = kb.get()
-        if k == "enter":
-            return True
-        if k == "esc":
-            return False
+        if k in ("enter", "esc"):
+            return k
         f += 1
         time.sleep(0.06)
 
 
 def _accueil_oeil(modele):
-    """Anime l'œil, montre le slogan + l'invite, puis attend la touche.
-    Renvoie True (entrer dans le menu) ou False (quitter)."""
-    global _intro_offset, _intro_voffset
+    """Anime l'œil (ouverture → scan/verrouillage → slogan), attend la touche,
+    puis plonge dans la pupille vers le menu. True = entrer, False = quitter."""
+    global _intro_offset, _intro_voffset, _oeil_seed
     _intro_offset = _intro_voffset = 0
     taille = _Taille()
     W = max(min(taille.columns - 1, 400), 24)
     H = max(min(taille.lines - 1, 120), 14)
     slogan = random.choice(_SLOGANS)
+    _oeil_seed = random.randint(1, 10 ** 6)          # veines fixes pour ce lancement
     _cacher_curseur()
     try:
         with _Clavier() as kb:
-            r = _oeil_ouverture(W, H, kb)
-            if r == "esc":
-                return False
-            if r != "enter":
-                r = _oeil_revele(W, H, slogan, kb)
+            phases = (
+                lambda: _oeil_ouverture(W, H, kb),   # l'œil s'ouvre (long)
+                lambda: _oeil_scan(W, H, kb),        # scan + verrouillage
+                lambda: _oeil_revele(W, H, slogan, kb),   # slogan + invite
+                lambda: _oeil_attente(W, H, slogan, kb),  # attend ENTRÉE / ÉCHAP
+            )
+            for phase in phases:
+                r = phase()
                 if r == "esc":
                     return False
-            if r == "enter":
-                return True
-            return _oeil_attente(W, H, slogan, kb)
+                if r == "enter":
+                    _oeil_zoom(W, H)                 # plongée dans la pupille
+                    return True
+            return True
     finally:
         _montrer_curseur()
 
