@@ -32,7 +32,7 @@ DEFAUTS = {
     "titre_cycle": True,            # titre arc-en-ciel animé
     "son": True,                    # bips de validation
     "crt": True,                    # effet scanlines / vieil écran
-    "modele": MODELE,               # modèle Ollama utilisé par l'IA
+    "modele": "qwen2.5-coder:7b",   # modèle Ollama utilisé par l'IA (défini plus bas)
 }
 DENSITES = {"faible": 0.4, "moyenne": 0.8, "forte": 1.0}
 VITESSES = {"lente": 0.6, "normale": 1.0, "rapide": 1.7}
