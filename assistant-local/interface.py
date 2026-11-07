@@ -851,6 +851,7 @@ _menu_bas = 0              # nombre de lignes occupées par le menu
 _titre_marge = 0           # marge gauche du logo dans le menu
 _taille_menu = None        # taille du terminal au moment de composer le menu
 _modele_menu = ""          # nom affiché, pour recomposer après un redimensionnement
+_menu_offset = 0           # marge gauche pour centrer le menu dans la fenêtre
 
 
 def _repaint_menu(i_teinte, tetes, f):
@@ -858,13 +859,14 @@ def _repaint_menu(i_teinte, tetes, f):
     sans toucher la ligne de saisie ni déplacer le curseur."""
     W = len(_grille_menu[0])
     buf = ["\x1b7"]
+    dec = _menu_offset
     for ry in range(_menu_bas):
         if 1 <= ry <= LOGO_ROWS:                         # lignes du titre → teinte
             ligne = _LOGO_TEINTES[i_teinte][ry - 1]
-            buf.append(f"\x1b[{ry + 1};1H" + BASE + "\x1b[K" + " " * _titre_marge + ligne)
+            buf.append(f"\x1b[{ry + 1};1H" + BASE + "\x1b[K" + " " * (dec + _titre_marge) + ligne)
             continue
         row = _grille_menu[ry]
-        bout = [f"\x1b[{ry + 1};1H" + BASE + "\x1b[K"]
+        bout = [f"\x1b[{ry + 1};1H" + BASE + "\x1b[K" + " " * dec]
         cfg = cbg = None
         for x in range(W):
             ch, fg, bg = row[x]
@@ -1043,14 +1045,17 @@ def _composer_menu(modele):
 
 def afficher_menu(modele):
     """Compose et pose l'écran du menu (titre en haut), prêt pour le fond animé."""
-    global sur_menu, _grille_menu, _menu_bas, _titre_marge, _taille_menu, _modele_menu
+    global sur_menu, _grille_menu, _menu_bas, _titre_marge, _taille_menu, _modele_menu, _menu_offset
+    taille = shutil.get_terminal_size((100, 30))
     grille, bas, ml = _composer_menu(modele)
     _grille_menu, _menu_bas, _titre_marge = grille, bas, ml
     _modele_menu = modele
-    _taille_menu = tuple(shutil.get_terminal_size((100, 30)))
+    _taille_menu = tuple(taille)
+    _menu_offset = max((taille.columns - len(grille[0])) // 2, 0)   # centre le menu
+    dec = " " * _menu_offset
     out = [BASE + "\x1b[2J\x1b[H"]
     for row in grille:
-        out.append(_ligne_ansi(row) + "\x1b[K\n")
+        out.append(BASE + dec + _ligne_ansi(row) + "\x1b[K\n")
     _ecrire("".join(out))
     sur_menu = True
 
