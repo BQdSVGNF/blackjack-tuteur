@@ -32,7 +32,7 @@ DEFAUTS = {
     "titre_cycle": True,            # titre arc-en-ciel animé
     "son": True,                    # bips de validation
     "crt": True,                    # effet scanlines / vieil écran
-    "menu_anime": False,            # fond animé du menu (OFF = statique, plus stable)
+    "menu_anime": True,             # fond animé du menu (pluie Matrix + titre arc-en-ciel)
     "modele": "qwen2.5-coder:7b",   # modèle Ollama utilisé par l'IA (défini plus bas)
 }
 DENSITES = {"faible": 0.4, "moyenne": 0.8, "forte": 1.0}
@@ -65,7 +65,7 @@ def appliquer_conf(conf):
         cycle=conf.get("titre_cycle", True),
         son=conf.get("son", True),
         crt=conf.get("crt", True),
-        menu_anime=conf.get("menu_anime", False),
+        menu_anime=conf.get("menu_anime", True),
     )
 
 
@@ -103,7 +103,7 @@ def ecran_parametres(conf):
             ("7", "Son (bips de validation)", oui(conf["son"])),
             ("8", "Effet CRT (scanlines)", oui(conf["crt"])),
             ("9", "Modèle de l'IA (code)", conf["modele"]),
-            ("10", "Menu animé (pluie + titre) — expérimental", oui(conf["menu_anime"])),
+            ("10", "Menu animé (pluie + titre arc-en-ciel)", oui(conf["menu_anime"])),
             ("0", "Revenir au menu", ""),
         ]
         for num, nom, val in lignes:

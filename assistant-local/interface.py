@@ -21,7 +21,7 @@ PLUIE_VITESSE = 1.0        # multiplicateur de vitesse de la pluie
 TITRE_CYCLE = True         # True = le titre cycle l'arc-en-ciel, False = couleur fixe
 SON = True                 # bips de validation
 CRT = True                 # effet scanlines / vieil écran
-MENU_ANIME = False         # fond animé du menu (pluie + titre arc-en-ciel) ; OFF = menu statique stable
+MENU_ANIME = True          # fond animé du menu (pluie Matrix + titre arc-en-ciel) ; coupe-le dans Paramètres [14] si ça scintille
 
 
 def appliquer_params(animations=None, densite=None, vitesse=None, cycle=None,
@@ -723,8 +723,8 @@ def intro_animee():
         return
     global _intro_offset, _intro_voffset
     taille = _Taille()
-    W = max(min(taille.columns - 1, 200), LOGO_COLS + 6)   # remplit la largeur
-    H = max(min(taille.lines - 1, 46), LOGO_ROWS + 10)     # remplit la hauteur
+    W = max(min(taille.columns - 1, 400), LOGO_COLS + 6)   # remplit toute la largeur de la fenêtre
+    H = max(min(taille.lines - 1, 120), LOGO_ROWS + 10)    # remplit toute la hauteur de la fenêtre
     # centre tout le bloc d'intro (W×H) dans la fenêtre réelle, pour qu'il ne
     # reste pas collé en haut à gauche quand le terminal est agrandi
     _intro_offset = max((taille.columns - 1 - W) // 2, 0)
@@ -1033,7 +1033,7 @@ def _boite_cellules(titre, entrees, couleur):
 def _composer_menu(modele):
     """Construit toute la grille de l'écran du menu (title + boîtes + aide)."""
     taille = _Taille()
-    W = max(min(taille.columns - 1, 200), 2 * LARGEUR_BOITE + 3)
+    W = max(min(taille.columns - 1, 400), 2 * LARGEUR_BOITE + 3)   # la pluie remplit toute la largeur
     marge = max((W - (2 * LARGEUR_BOITE + 3)) // 2, 0)
     ml = max((W - LOGO_COLS) // 2, 0)
     sections = [
