@@ -21,12 +21,15 @@ PLUIE_VITESSE = 1.0        # multiplicateur de vitesse de la pluie
 TITRE_CYCLE = True         # True = le titre cycle l'arc-en-ciel, False = couleur fixe
 SON = True                 # bips de validation
 CRT = True                 # effet scanlines / vieil écran
+MENU_ANIME = False         # fond animé du menu (pluie + titre arc-en-ciel) ; OFF = menu statique stable
 
 
 def appliquer_params(animations=None, densite=None, vitesse=None, cycle=None,
-                     son=None, crt=None):
+                     son=None, crt=None, menu_anime=None):
     """Applique les réglages du mode Paramètres (à chaud)."""
-    global ANIMATIONS, PLUIE_DENSITE, PLUIE_VITESSE, TITRE_CYCLE, SON, CRT
+    global ANIMATIONS, PLUIE_DENSITE, PLUIE_VITESSE, TITRE_CYCLE, SON, CRT, MENU_ANIME
+    if menu_anime is not None:
+        MENU_ANIME = bool(menu_anime)
     if animations is not None:
         ANIMATIONS = (bool(animations) and sys.stdout.isatty()
                       and os.environ.get("BJ_SANS_ANIMATION") != "1")
@@ -968,7 +971,9 @@ class _Pulsation(threading.Thread):
 
 def demarrer_pulsation():
     global _pulse
-    if ANIMATIONS and _pulse is None and _grille_menu:
+    # Le fond animé (thread qui redessine) n'est lancé QUE si explicitement activé :
+    # par défaut le menu est statique (aucun redessin concurrent → affichage stable).
+    if MENU_ANIME and ANIMATIONS and _pulse is None and _grille_menu:
         _pulse = _Pulsation()
         _pulse.start()
 
