@@ -984,6 +984,181 @@ _taille_menu = None        # taille du terminal au moment de composer le menu
 _modele_menu = ""          # nom affiché, pour recomposer après un redimensionnement
 _menu_offset = 0           # marge gauche pour centrer le menu dans la fenêtre
 
+# --- Console vivante (barre du haut + stats en direct) ---
+_titre_haut = 4            # ligne où commence le logo (après l'entête console)
+_ligne_horloge = 0         # ligne de l'horloge
+_col_horloge = 0           # colonne de l'horloge
+_ligne_stats = 2           # ligne des jauges CPU/RAM/disque
+_ip_cache = ""             # IP locale (calculée une fois)
+_op_cache = ("", "")       # (utilisateur, machine)
+_cpu_prev = None           # échantillon CPU précédent
+HDR_BG = _fond(14, 18, 28)        # fond de l'entête
+BAR_BG = _fond(26, 34, 50)        # fond de la barre de titre (ligne 0)
+
+
+def _stat_cpu():
+    """Charge CPU en % (échantillonnée entre deux appels). None si indispo."""
+    global _cpu_prev
+    try:
+        if os.name == "nt":
+            import ctypes
+            from ctypes import wintypes
+            idle, kern, user = wintypes.FILETIME(), wintypes.FILETIME(), wintypes.FILETIME()
+            ctypes.windll.kernel32.GetSystemTimes(ctypes.byref(idle), ctypes.byref(kern),
+                                                  ctypes.byref(user))
+            q = lambda ft: (ft.dwHighDateTime << 32) | ft.dwLowDateTime
+            idl, tot = q(idle), q(kern) + q(user)
+        else:
+            with open("/proc/stat") as f:
+                v = [int(p) for p in f.readline().split()[1:]]
+            idl, tot = v[3] + v[4], sum(v)
+        if _cpu_prev is None:
+            _cpu_prev = (idl, tot)
+            return None
+        di, dt = idl - _cpu_prev[0], tot - _cpu_prev[1]
+        _cpu_prev = (idl, tot)
+        return max(0, min(100, int(100 * (1 - di / dt)))) if dt > 0 else None
+    except Exception:
+        return None
+
+
+def _stat_ram():
+    """% de RAM utilisée. None si indispo."""
+    try:
+        if os.name == "nt":
+            import ctypes
+
+            class _MS(ctypes.Structure):
+                _fields_ = [("dwLength", ctypes.c_ulong), ("dwMemoryLoad", ctypes.c_ulong),
+                            ("a", ctypes.c_ulonglong), ("b", ctypes.c_ulonglong),
+                            ("c", ctypes.c_ulonglong), ("d", ctypes.c_ulonglong),
+                            ("e", ctypes.c_ulonglong), ("f", ctypes.c_ulonglong),
+                            ("g", ctypes.c_ulonglong)]
+            ms = _MS()
+            ms.dwLength = ctypes.sizeof(_MS)
+            ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(ms))
+            return int(ms.dwMemoryLoad)
+        with open("/proc/meminfo") as f:
+            d = {}
+            for line in f:
+                parts = line.split()
+                d[parts[0].rstrip(":")] = int(parts[1])
+        tot = d["MemTotal"]
+        dispo = d.get("MemAvailable", d.get("MemFree", 0))
+        return int(100 * (tot - dispo) / tot) if tot else None
+    except Exception:
+        return None
+
+
+def _stat_disque():
+    try:
+        return int(100 * shutil.disk_usage("C:\\" if os.name == "nt" else "/").used
+                   / shutil.disk_usage("C:\\" if os.name == "nt" else "/").total)
+    except Exception:
+        return None
+
+
+def _ip_locale():
+    import socket
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            s.connect(("8.8.8.8", 80))
+            return s.getsockname()[0]
+        finally:
+            s.close()
+    except Exception:
+        try:
+            return socket.gethostbyname(socket.gethostname())
+        except Exception:
+            return "—"
+
+
+def _operateur():
+    import getpass
+    import socket
+    try:
+        return getpass.getuser(), socket.gethostname()
+    except Exception:
+        return "operateur", "machine"
+
+
+def _jauge(pct, w=8):
+    if pct is None:
+        return "·" * w
+    n = max(0, min(w, int(round(pct / 100.0 * w))))
+    return "▓" * n + "░" * (w - n)
+
+
+def _coul_niveau(pct):
+    if pct is None:
+        return DISCRET
+    if pct < 60:
+        return _txt(90, 220, 140)
+    if pct < 85:
+        return _txt(240, 190, 90)
+    return _txt(240, 90, 90)
+
+
+_sess_id = ""              # identifiant de session affiché dans l'entête
+
+
+def _poser_horloge(grille, W):
+    if not (0 <= _ligne_horloge < len(grille)):
+        return
+    h = time.strftime("%H:%M:%S")
+    row = grille[_ligne_horloge]
+    for i, ch in enumerate(h):
+        c = _col_horloge + i
+        if 0 <= c < W:
+            row[c] = [ch, _txt(160, 225, 255), BAR_BG]
+
+
+def _poser_stats(grille, W):
+    if not (0 <= _ligne_stats < len(grille)):
+        return
+    cpu, ram, disque = _stat_cpu(), _stat_ram(), _stat_disque()
+    pf = lambda p: (f"{p:>3}%" if p is not None else " --%")
+    seg = [("CPU ", DISCRET), (_jauge(cpu), _coul_niveau(cpu)), (" " + pf(cpu), _coul_niveau(cpu)),
+           ("   RAM ", DISCRET), (_jauge(ram), _coul_niveau(ram)), (" " + pf(ram), _coul_niveau(ram)),
+           ("   DISQUE ", DISCRET), (_jauge(disque), _coul_niveau(disque)), (" " + pf(disque), _coul_niveau(disque)),
+           ("   IP " + (_ip_cache or "—"), _txt(120, 200, 230))]
+    total = sum(len(t) for t, _ in seg)
+    row = grille[_ligne_stats]
+    for c in range(W):
+        row[c] = [" ", None, HDR_BG]
+    x = max((W - total) // 2, 1)
+    for t, coul in seg:
+        for ch in t:
+            if 0 <= x < W:
+                row[x] = [ch, coul, HDR_BG]
+            x += 1
+
+
+def _poser_entete(grille, W, modele):
+    """Barre de titre (ligne 0) + statut opérateur (ligne 1)."""
+    if len(grille) < 2:
+        return
+    row0 = grille[0]
+    for c in range(W):
+        row0[c] = [" ", None, BAR_BG]
+    for i, ch in enumerate("◤ BLACK JACK ◢"):
+        if 2 + i < W:
+            row0[2 + i] = [ch, _txt(155, 215, 255), BAR_BG]
+    enl = "● EN LIGNE"
+    mx = max((W - len(enl)) // 2, 0)
+    for i, ch in enumerate(enl):
+        if 0 <= mx + i < W:
+            row0[mx + i] = [ch, _txt(90, 235, 140) if ch == "●" else _txt(150, 210, 180), BAR_BG]
+    u, host = _op_cache
+    stat = f"OPÉRATEUR {u}@{host}  ·  SESSION #{_sess_id}  ·  IA {modele}"
+    row1 = grille[1]
+    for c in range(W):
+        row1[c] = [" ", None, HDR_BG]
+    for i, ch in enumerate(stat):
+        if 2 + i < W:
+            row1[2 + i] = [ch, _txt(110, 150, 185), HDR_BG]
+
 
 def _repaint_menu(i_teinte, tetes, f):
     """Repeint les lignes du menu : pluie dans les cases vides + titre teinté,
@@ -992,8 +1167,8 @@ def _repaint_menu(i_teinte, tetes, f):
     buf = ["\x1b7"]
     dec = _menu_offset
     for ry in range(_menu_bas):
-        if 1 <= ry <= LOGO_ROWS:                         # lignes du titre → teinte
-            ligne = _LOGO_TEINTES[i_teinte][ry - 1]
+        if _titre_haut <= ry < _titre_haut + LOGO_ROWS:  # lignes du titre → teinte
+            ligne = _LOGO_TEINTES[i_teinte][ry - _titre_haut]
             buf.append(f"\x1b[{ry + 1};1H" + BASE + "\x1b[K" + " " * (dec + _titre_marge) + ligne)
             continue
         row = _grille_menu[ry]
@@ -1001,7 +1176,7 @@ def _repaint_menu(i_teinte, tetes, f):
         cfg = cbg = None
         for x in range(W):
             ch, fg, bg = row[x]
-            if ch == " " and fg is None and tetes is not None:   # case vide → pluie ?
+            if ch == " " and fg is None and bg is None and tetes is not None:   # case vide → pluie ?
                 k = int(tetes[x][0]) - ry
                 if 0 <= k < tetes[x][2]:
                     ch2 = CARS_PLUIE[(x * 7 + ry * 13 + f) % len(CARS_PLUIE)]
@@ -1064,6 +1239,9 @@ class _Pulsation(threading.Thread):
                     t[0] = rng.uniform(-bas, 0.0)
                     t[1] = rng.uniform(0.6, 1.5) * PLUIE_VITESSE
                     t[2] = rng.randint(4, max(5, bas - 2))
+            _poser_horloge(_grille_menu, W)            # horloge en direct
+            if f % 11 == 0:                            # stats ~1×/s
+                _poser_stats(_grille_menu, W)
             teinte = (i % n) if TITRE_CYCLE else 0
             _ecrire(_repaint_menu(teinte, tetes, f))
             i += 1
@@ -1120,11 +1298,19 @@ def _boite_cellules(titre, entrees, couleur):
 
 
 def _composer_menu(modele):
-    """Construit toute la grille de l'écran du menu (title + boîtes + aide)."""
+    """Console : entête (barre + stats en direct) puis logo, modules, invite."""
+    global _ligne_horloge, _col_horloge, _ligne_stats, _ip_cache, _op_cache, _sess_id
     taille = _Taille()
     W = max(min(taille.columns - 1, 400), 2 * LARGEUR_BOITE + 3)   # la pluie remplit toute la largeur
     marge = max((W - (2 * LARGEUR_BOITE + 3)) // 2, 0)
     ml = max((W - LOGO_COLS) // 2, 0)
+    if not _ip_cache:
+        _ip_cache = _ip_locale()
+    _op_cache = _operateur()
+    if not _sess_id:
+        _sess_id = f"{os.getpid() & 0xFFFF:04X}"
+    _ligne_horloge, _ligne_stats = 0, 2
+    _col_horloge = max(W - 10, 0)
     sections = [
         ("♠ TABLE — L'IA", [("1", "Discuter (tape ton message)"), ("2", "Recherche web sourcée"),
                             ("3", "CODEX — coder (C++, Python, web…)"),
@@ -1157,13 +1343,19 @@ def _composer_menu(modele):
             for j, cell in enumerate(brow):
                 row[col + j] = list(cell)
 
+    for r in range(_titre_haut + LOGO_ROWS):          # réserve entête + zone logo
+        at(r)
+    _poser_entete(lignes, W, modele)                  # barre + statut opérateur
+    _poser_horloge(lignes, W)
+    _poser_stats(lignes, W)
     for cr in range(LOGO_ROWS):                       # titre (teinte de base)
-        row = at(1 + cr)
+        row = at(_titre_haut + cr)
         for x in range(LOGO_COLS):
             row[ml + x] = ["▀", _txt(*LOGO[2 * cr][x]), _fond(*LOGO[2 * cr + 1][x])]
     sous = f"▓▒░  IA locale · {modele} · hors-ligne · chiffré  ░▒▓"
-    texte(LOGO_ROWS + 3, max((W - len(sous)) // 2, 0), sous, DISCRET)
-    r1 = LOGO_ROWS + 5
+    base_sous = _titre_haut + LOGO_ROWS + 1
+    texte(base_sous, max((W - len(sous)) // 2, 0), sous, DISCRET)
+    r1 = base_sous + 2
     poser(r1, marge, boites[0]); poser(r1, marge + LARGEUR_BOITE + 3, boites[1])
     r2 = r1 + max(len(boites[0]), len(boites[1])) + 1
     poser(r2, marge, boites[2]); poser(r2, marge + LARGEUR_BOITE + 3, boites[3])
@@ -1205,13 +1397,41 @@ def _distribue_blackjack():
     _pause(0.4)
 
 
+def _boot_console(modele):
+    """Boot de la console après le zoom : lignes qui s'écrivent avant le tableau de bord."""
+    if not (ANIMATIONS and sys.stdout.isatty()):
+        return
+    u, _host = _operateur()
+    etapes = [("RÉVEIL DU NOYAU", "OK"), ("DÉCHIFFREMENT DU COFFRE", "OK"),
+              ("CONNEXION AU TAPIS", "OK"), (f"CHARGEMENT IA · {modele}", "OK"),
+              (f"OPÉRATEUR AUTHENTIFIÉ · {u}", "ACCÈS")]
+    taille = _Taille()
+    W = max(min(taille.columns - 1, 400), 24)
+    H = max(min(taille.lines - 1, 120), 10)
+    larg = max(len(a) for a, _ in etapes) + 16
+    gx = max((W - larg) // 2, 2)
+    gy = max(H // 2 - len(etapes), 1)
+    _ecrire(BASE + "\x1b[2J")
+    for i, (txt, tag) in enumerate(etapes):
+        y = gy + i
+        _ecrire(f"\x1b[{y};{gx}H" + VERT + "> " + BASE + TEXTE + txt + " ")
+        for _ in range(max(larg - len(txt) - 7 - len(tag), 1)):
+            _ecrire(DISCRET + ".")
+            time.sleep(0.006)
+        _ecrire("  " + _txt(120, 255, 160) + GRAS + tag + BASE)
+        time.sleep(0.11)
+    time.sleep(0.34)
+    _ecrire(BASE + "\x1b[2J\x1b[H")
+
+
 def ecran_accueil(modele):
-    """Écran de départ : seulement l'œil + slogan + invite ENTRÉE/ÉCHAP.
+    """Écran de départ : l'œil + slogan + invite ENTRÉE/ÉCHAP, puis boot de la console.
     Renvoie True si on entre dans le menu, False si l'utilisateur quitte (ÉCHAP)."""
     initialiser()
     if ANIMATIONS and sys.stdout.isatty():
         if not _accueil_oeil(modele):      # ÉCHAP → on quitte proprement
             return False
+        _boot_console(modele)              # déverrouillage → la console s'allume
     afficher_menu(modele)
     return True
 
