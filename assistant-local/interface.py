@@ -108,7 +108,8 @@ def effacer():
 
 
 def initialiser():
-    """Active les couleurs dans le cmd et peint le tapis vert."""
+    """Active les couleurs et bascule sur un ÉCRAN ALTERNATIF (comme vim/htop) :
+    pas d'historique de défilement, donc pas de doublons ni d'intro « scrollable »."""
     if os.name == "nt":
         os.system("")  # active le mode ANSI de la console Windows
     try:
@@ -116,11 +117,16 @@ def initialiser():
         sys.stdin.reconfigure(encoding="utf-8")
     except Exception:
         pass
+    _ecrire("\x1b[?1049h")            # écran alternatif
     _ecrire(BASE + "\x1b[2J\x1b[H")
 
 
 def restaurer():
-    _ecrire(RESET + "\n")
+    """Revient à l'écran normal du terminal (fin propre, sans logos résiduels)."""
+    _ecrire("\x1b[?25h")             # réaffiche le curseur
+    _ecrire(BASE + "\x1b[2J\x1b[H")
+    _ecrire("\x1b[?1049l")           # quitte l'écran alternatif
+    _ecrire(RESET)
 
 
 # ---------- Cartes ----------

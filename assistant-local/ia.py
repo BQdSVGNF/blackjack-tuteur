@@ -400,6 +400,14 @@ def main():
     MODELE = conf.get("modele", MODELE)  # modèle choisi dans les paramètres
     appliquer_conf(conf)                 # applique les réglages avant l'intro
     lancer_musique(conf)                 # Spotify démarre dès le lancement
+    try:
+        _boucle(historique, conf)
+    finally:
+        ui.arreter_pulsation()
+        ui.ecran_sortie()                # revient toujours à l'écran normal du terminal
+
+
+def _boucle(historique, conf):
     ui.ecran_accueil(NOM_IA)
     while True:
         if ui.sur_menu:
@@ -466,7 +474,6 @@ def main():
                 continue
             break
         ui.separateur()
-    ui.ecran_sortie()
 
 
 if __name__ == "__main__":
