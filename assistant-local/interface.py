@@ -357,16 +357,24 @@ def _crt(grille, f):
 
 
 _crt_f = 0
+_intro_offset = 0          # marge gauche pour centrer l'intro dans la fenêtre
+_intro_voffset = 0         # marge haute pour centrer l'intro dans la fenêtre
 
 
 def _rendu_grille(grille):
-    """Transforme une grille de (char, fg, bg) en une image terminal (+ CRT)."""
+    """Transforme une grille de (char, fg, bg) en une image terminal (+ CRT).
+    L'image (de taille W×H) est centrée dans le terminal réel via les marges
+    _intro_offset (gauche) et _intro_voffset (haut), pour qu'elle ne se colle
+    pas en haut à gauche quand la fenêtre est agrandie."""
     global _crt_f
     grille = _crt(grille, _crt_f)
     _crt_f += 1
+    dec = " " * _intro_offset
     out = ["\x1b[H"]
+    for _ in range(_intro_voffset):              # lignes vides au-dessus (centrage vertical)
+        out.append(BASE + "\x1b[K\n")
     for rangee in grille:
-        morceaux = [BASE]
+        morceaux = [BASE, dec]
         cfg = cbg = None
         for ch, fg, bg in rangee:
             dfg = fg or TEXTE
@@ -405,7 +413,7 @@ def _intro_boot(W, H):
     ]
     _ecrire(BASE + "\x1b[2J\x1b[H")
     for i, txt in enumerate(lignes):
-        _ecrire(f"\x1b[{2 + i};3H" + VERT)
+        _ecrire(f"\x1b[{_intro_voffset + 2 + i};{_intro_offset + 3}H" + VERT)
         for ch in txt:
             _ecrire(ch)
             time.sleep(0.004)
@@ -713,9 +721,14 @@ def intro_animee():
     se révèle par balayage avec un reflet. Effet d'ouverture « wow »."""
     if not ANIMATIONS or LOGO_COLS == 0:
         return
+    global _intro_offset, _intro_voffset
     taille = _Taille()
     W = max(min(taille.columns - 1, 200), LOGO_COLS + 6)   # remplit la largeur
     H = max(min(taille.lines - 1, 46), LOGO_ROWS + 10)     # remplit la hauteur
+    # centre tout le bloc d'intro (W×H) dans la fenêtre réelle, pour qu'il ne
+    # reste pas collé en haut à gauche quand le terminal est agrandi
+    _intro_offset = max((taille.columns - 1 - W) // 2, 0)
+    _intro_voffset = max((taille.lines - 1 - H) // 2, 0)
     gauche = max((W - LOGO_COLS) // 2, 0)
     haut_logo = max((H - LOGO_ROWS) // 2 - 1, 0)
 
