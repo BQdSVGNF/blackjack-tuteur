@@ -1101,6 +1101,15 @@ def _coul_niveau(pct):
 
 
 _sess_id = ""              # identifiant de session affiché dans l'entête
+_ia_turbo = False          # état de l'IA (True = mode TURBO en ligne)
+_ia_modele = ""            # nom du modèle IA affiché (local ou turbo)
+
+
+def definir_etat_ia(turbo, modele):
+    """Appelé par ia.py pour que l'entête reflète le mode IA (local / TURBO)."""
+    global _ia_turbo, _ia_modele
+    _ia_turbo = bool(turbo)
+    _ia_modele = modele or ""
 
 
 def _poser_horloge(grille, W):
@@ -1151,7 +1160,9 @@ def _poser_entete(grille, W, modele):
         if 0 <= mx + i < W:
             row0[mx + i] = [ch, _txt(90, 235, 140) if ch == "●" else _txt(150, 210, 180), BAR_BG]
     u, host = _op_cache
-    stat = f"OPÉRATEUR {u}@{host}  ·  SESSION #{_sess_id}  ·  IA {modele}"
+    mode_ia = f"IA TURBO · {_ia_modele}" if _ia_turbo else (f"IA locale · {_ia_modele}" if _ia_modele else "IA locale")
+    etat = "● EN LIGNE" if _ia_turbo else "○ HORS-LIGNE"
+    stat = f"OPÉRATEUR {u}@{host}  ·  SESSION #{_sess_id}  ·  {mode_ia}  ·  {etat}"
     row1 = grille[1]
     for c in range(W):
         row1[c] = [" ", None, HDR_BG]
@@ -1352,7 +1363,10 @@ def _composer_menu(modele):
         row = at(_titre_haut + cr)
         for x in range(LOGO_COLS):
             row[ml + x] = ["▀", _txt(*LOGO[2 * cr][x]), _fond(*LOGO[2 * cr + 1][x])]
-    sous = f"▓▒░  IA locale · {modele} · hors-ligne · chiffré  ░▒▓"
+    if _ia_turbo:
+        sous = f"▓▒░  IA TURBO · {_ia_modele} · en ligne  ░▒▓"
+    else:
+        sous = f"▓▒░  IA locale · {_ia_modele or modele} · hors-ligne · chiffré  ░▒▓"
     base_sous = _titre_haut + LOGO_ROWS + 1
     texte(base_sous, max((W - len(sous)) // 2, 0), sous, DISCRET)
     r1 = base_sous + 2

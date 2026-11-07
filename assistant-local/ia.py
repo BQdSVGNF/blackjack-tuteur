@@ -34,6 +34,11 @@ DEFAUTS = {
     "crt": True,                    # effet scanlines / vieil écran
     "menu_anime": True,             # fond animé du menu (pluie Matrix + titre arc-en-ciel)
     "modele": "qwen2.5-coder:7b",   # modèle Ollama utilisé par l'IA (défini plus bas)
+    # --- Mode TURBO : IA en ligne (niveau Claude), API compatible OpenAI ---
+    "turbo": False,                 # False = IA locale (hors-ligne) ; True = API en ligne
+    "turbo_cle": "",                # clé API (stockée en clair dans parametres.json)
+    "turbo_modele": "anthropic/claude-3.5-sonnet",      # ex. via OpenRouter
+    "turbo_url": "https://openrouter.ai/api/v1/chat/completions",
 }
 DENSITES = {"faible": 0.4, "moyenne": 0.8, "forte": 1.0}
 VITESSES = {"lente": 0.6, "normale": 1.0, "rapide": 1.7}
@@ -57,7 +62,19 @@ def sauver_conf(conf):
         ui.erreur(f"Impossible d'enregistrer les paramètres : {e}")
 
 
+def appliquer_ia_conf(conf):
+    """Applique les réglages IA (local / TURBO) aux variables du module."""
+    global TURBO, TURBO_CLE, TURBO_MODELE, TURBO_URL
+    TURBO = bool(conf.get("turbo", False))
+    TURBO_CLE = conf.get("turbo_cle", "").strip()
+    TURBO_MODELE = conf.get("turbo_modele", TURBO_MODELE).strip() or TURBO_MODELE
+    TURBO_URL = conf.get("turbo_url", TURBO_URL).strip() or TURBO_URL
+    actif = TURBO and bool(TURBO_CLE)
+    ui.definir_etat_ia(actif, TURBO_MODELE if actif else conf.get("modele", MODELE))
+
+
 def appliquer_conf(conf):
+    appliquer_ia_conf(conf)
     ui.appliquer_params(
         animations=conf.get("animations", True),
         densite=DENSITES.get(conf.get("pluie_densite"), 0.8),
@@ -102,8 +119,12 @@ def ecran_parametres(conf):
             ("6", "Titre arc-en-ciel (sinon fixe)", oui(conf["titre_cycle"])),
             ("7", "Son (bips de validation)", oui(conf["son"])),
             ("8", "Effet CRT (scanlines)", oui(conf["crt"])),
-            ("9", "Modèle de l'IA (code)", conf["modele"]),
+            ("9", "Modèle de l'IA locale (code)", conf["modele"]),
             ("10", "Menu animé (pluie + titre arc-en-ciel)", oui(conf["menu_anime"])),
+            ("11", "Mode TURBO (IA en ligne, niveau Claude)", oui(conf["turbo"])),
+            ("12", "Clé API TURBO", "définie ✓" if conf.get("turbo_cle") else "— (requise)"),
+            ("13", "Modèle TURBO", conf["turbo_modele"]),
+            ("14", "URL API TURBO (avancé)", conf["turbo_url"]),
             ("0", "Revenir au menu", ""),
         ]
         for num, nom, val in lignes:
@@ -139,6 +160,29 @@ def ecran_parametres(conf):
             ui.info(f"\n  Modèle : {MODELE}  (il doit être téléchargé : ollama pull {MODELE})", ui.OR)
         elif choix == "10":
             conf["menu_anime"] = not conf["menu_anime"]
+        elif choix == "11":
+            conf["turbo"] = not conf["turbo"]
+            if conf["turbo"] and not conf.get("turbo_cle"):
+                ui.info("\n  TURBO activé — il te faut une clé API ([12]). "
+                        "Astuce : OpenRouter donne accès à Claude avec une seule clé.", ui.OR)
+            elif conf["turbo"]:
+                ui.info("\n  TURBO activé : l'IA répond en ligne (niveau Claude).", ui.VERT)
+            else:
+                ui.info("\n  TURBO coupé : retour à l'IA locale (hors-ligne).", ui.CYAN)
+        elif choix == "12":
+            nv = ui.demander_texte("Colle ta clé API (vide = effacer). Elle reste sur ton PC").strip()
+            conf["turbo_cle"] = nv
+            ui.info("\n  Clé enregistrée ✓" if nv else "\n  Clé effacée.", ui.VERT if nv else ui.CYAN)
+        elif choix == "13":
+            nv = ui.demander_texte(
+                "Modèle TURBO (ex. anthropic/claude-3.5-sonnet · openai/gpt-4o · "
+                "meta-llama/llama-3.1-70b-instruct)").strip()
+            if nv:
+                conf["turbo_modele"] = nv
+        elif choix == "14":
+            nv = ui.demander_texte(
+                "URL API compatible OpenAI (Entrée = OpenRouter par défaut)").strip()
+            conf["turbo_url"] = nv or DEFAUTS["turbo_url"]
         else:
             continue
         sauver_conf(conf)
@@ -156,6 +200,11 @@ except Exception:
 # On utilise directement un modèle téléchargé (pas besoin d'« ollama create »).
 # qwen2.5-coder est spécialisé code et tient dans les 8 Go de la RTX 4060.
 MODELE = "qwen2.5-coder:7b"
+# Mode TURBO (IA en ligne) — valeurs appliquées depuis la config
+TURBO = False
+TURBO_CLE = ""
+TURBO_MODELE = "anthropic/claude-3.5-sonnet"
+TURBO_URL = "https://openrouter.ai/api/v1/chat/completions"
 NOM_IA = "black-jack"                      # nom affiché dans l'interface
 # Modèles proposés dans les Paramètres (il faut les avoir téléchargés : ollama pull <nom>)
 MODELES_DISPO = ["qwen2.5-coder:7b", "deepseek-coder:6.7b",
@@ -203,8 +252,65 @@ BLOC_RECHERCHE = re.compile(r"```(?:recherche|search|web)\s*\n(.*?)```", re.DOTA
 
 # ---------- IA ----------
 
+def _demander_turbo(messages):
+    """Mode TURBO : API en ligne compatible OpenAI (OpenRouter, OpenAI, Groq…),
+    en streaming. Renvoie la réponse complète. Le texte s'affiche au fur et à mesure."""
+    corps = json.dumps({"model": TURBO_MODELE, "messages": messages, "stream": True}).encode("utf-8")
+    req = urllib.request.Request(TURBO_URL, data=corps, headers={
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {TURBO_CLE}",
+        "HTTP-Referer": "https://black-jack.local",     # demandé par OpenRouter (optionnel)
+        "X-Title": "Black Jack",
+    })
+    reponse = ""
+    animation = ui.Animation("Black Jack (TURBO) réfléchit").demarrer()
+    try:
+        with urllib.request.urlopen(req, timeout=120) as flux:
+            for ligne in flux:                          # flux SSE : "data: {json}"
+                ligne = ligne.decode("utf-8", "replace").strip()
+                if not ligne.startswith("data:"):
+                    continue
+                data = ligne[5:].strip()
+                if data == "[DONE]":
+                    break
+                try:
+                    delta = json.loads(data)["choices"][0]["delta"].get("content", "")
+                except Exception:
+                    continue
+                if delta:
+                    if animation:
+                        animation.arreter()
+                        animation = None
+                        ui.etiquette_ia()
+                    ui.morceau_ia(delta)
+                    reponse += delta
+    except urllib.error.HTTPError as e:
+        if animation:
+            animation.arreter()
+        detail = ""
+        try:
+            detail = e.read().decode("utf-8", "replace")[:200]
+        except Exception:
+            pass
+        if e.code in (401, 403):
+            raise RuntimeError("Clé API TURBO refusée. Vérifie ta clé dans Paramètres [12].")
+        raise RuntimeError(f"TURBO : erreur {e.code}. {detail}")
+    except urllib.error.URLError as e:
+        if animation:
+            animation.arreter()
+        raise RuntimeError(f"TURBO : pas de connexion ({getattr(e, 'reason', e)}). "
+                           "Vérifie ta connexion internet, ou repasse en IA locale dans Paramètres.")
+    finally:
+        if animation:
+            animation.arreter()
+    ui.fin_reponse()
+    return reponse
+
+
 def demander_ia(historique):
     messages = [{"role": "system", "content": SYSTEME_IA}] + historique[-MAX_MESSAGES:]
+    if TURBO and TURBO_CLE:                     # mode TURBO : IA en ligne (niveau Claude)
+        return _demander_turbo(messages)
     corps = json.dumps({
         "model": MODELE,
         "messages": messages,
