@@ -98,8 +98,28 @@ def _pause(secondes):
         time.sleep(secondes)
 
 
+def _dim():
+    """Taille RÉELLE du terminal (ignore les variables COLUMNS/LINES figées,
+    pour voir les agrandissements de fenêtre en direct)."""
+    try:
+        s = os.get_terminal_size(sys.stdout.fileno())
+        return s.columns, s.lines
+    except Exception:
+        try:
+            s = shutil.get_terminal_size((100, 30))
+            return s.columns, s.lines
+        except Exception:
+            return 100, 30
+
+
+class _Taille:
+    """Petit objet .columns/.lines (compatibilité avec le code existant)."""
+    def __init__(self):
+        self.columns, self.lines = _dim()
+
+
 def largeur():
-    return shutil.get_terminal_size((100, 30)).columns
+    return _dim()[0]
 
 
 def effacer():
@@ -690,7 +710,7 @@ def intro_animee():
     se révèle par balayage avec un reflet. Effet d'ouverture « wow »."""
     if not ANIMATIONS or LOGO_COLS == 0:
         return
-    taille = shutil.get_terminal_size((100, 30))
+    taille = _Taille()
     W = max(min(taille.columns - 1, 200), LOGO_COLS + 6)   # remplit la largeur
     H = max(min(taille.lines - 1, 46), LOGO_ROWS + 10)     # remplit la hauteur
     gauche = max((W - LOGO_COLS) // 2, 0)
@@ -925,7 +945,7 @@ class _Pulsation(threading.Thread):
         n, i, f = len(_LOGO_TEINTES), 0, 0
         while not self.stop.is_set():
             # redimensionnement de la fenêtre : on recompose le menu à la nouvelle taille
-            if tuple(shutil.get_terminal_size((100, 30))) != _taille_menu:
+            if _dim() != _taille_menu:
                 afficher_menu(_modele_menu)            # recompose + réaffiche à la bonne taille
                 _ecrire(_invite())                     # ré-affiche l'invite de saisie
                 W, bas = len(_grille_menu[0]), _menu_bas
@@ -994,7 +1014,7 @@ def _boite_cellules(titre, entrees, couleur):
 
 def _composer_menu(modele):
     """Construit toute la grille de l'écran du menu (title + boîtes + aide)."""
-    taille = shutil.get_terminal_size((100, 30))
+    taille = _Taille()
     W = max(min(taille.columns - 1, 200), 2 * LARGEUR_BOITE + 3)
     marge = max((W - (2 * LARGEUR_BOITE + 3)) // 2, 0)
     ml = max((W - LOGO_COLS) // 2, 0)
@@ -1052,11 +1072,11 @@ def _composer_menu(modele):
 def afficher_menu(modele):
     """Compose et pose l'écran du menu (titre en haut), prêt pour le fond animé."""
     global sur_menu, _grille_menu, _menu_bas, _titre_marge, _taille_menu, _modele_menu, _menu_offset
-    taille = shutil.get_terminal_size((100, 30))
+    taille = _Taille()
     grille, bas, ml = _composer_menu(modele)
     _grille_menu, _menu_bas, _titre_marge = grille, bas, ml
     _modele_menu = modele
-    _taille_menu = tuple(taille)
+    _taille_menu = (taille.columns, taille.lines)
     _menu_offset = max((taille.columns - len(grille[0])) // 2, 0)   # centre le menu
     dec = " " * _menu_offset
     out = [BASE + "\x1b[2J\x1b[H"]
