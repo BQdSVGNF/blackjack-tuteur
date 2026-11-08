@@ -492,9 +492,9 @@ def _oeil_geo(W, H):
     """Géométrie de l'œil (étiré) + les lignes où poser le slogan et l'invite."""
     cx = W // 2
     cy = int(H * 0.44)
-    Wx = max(min(cx - 4, 58), 10)                 # DEMI-largeur (bien étiré)
-    Hy = max(min(cy - 3, (H - cy) - 6, 13), 3)    # demi-hauteur
-    Ri = Hy - 0.4                                  # rayon vertical de l'iris
+    Wx = max(min(cx - 4, 100), 12)                # DEMI-largeur (œil tout en longueur)
+    Hy = max(min(cy - 3, (H - cy) - 6, 10), 3)    # demi-hauteur (plus plat → très étiré)
+    Ri = Hy - 0.3                                  # rayon vertical de l'iris
     r_slogan = min(cy + Hy + 3, H - 4)
     r_invite = min(cy + Hy + 5, H - 2)
     return cx, cy, Wx, Hy, Ri, r_slogan, r_invite
@@ -512,7 +512,7 @@ def _dessiner_veines(grille, W, H, cx, cy, Wx, Hy, Ri, icx, icy, ouv, intensite=
 
     def lid(ex):
         nx = ex / Wx
-        return 0.0 if abs(nx) >= 1.0 else ouv * Hy * (1.0 - nx * nx) ** 0.60
+        return 0.0 if abs(nx) >= 1.0 else ouv * Hy * (1.0 - nx * nx) ** 0.52
 
     def sur_sclere(x, y):
         l = lid(x - cx)
@@ -534,12 +534,12 @@ def _dessiner_veines(grille, W, H, cx, cy, Wx, Hy, Ri, icx, icy, ouv, intensite=
             if prof == 0 and rng.random() < 0.12 and i > 1:      # une ramification
                 trace(x, y, ang + rng.uniform(-1.1, 1.1), rng.randint(3, 7), 1)
 
-    for _ in range(rng.randint(6, 9)):
+    for _ in range(rng.randint(4, 6)):
         cote = rng.choice((-1, 1))
-        sx = cx + cote * rng.uniform(Wx * 0.60, Wx * 0.95)
+        sx = cx + cote * rng.uniform(Wx * 0.62, Wx * 0.96)
         sy = cy + rng.uniform(-0.55, 0.55) * Hy
         ang = math.atan2(cy - sy, (cx - sx)) + rng.uniform(-0.6, 0.6)
-        trace(sx, sy, ang, rng.randint(max(int(Wx * 0.35), 4), max(int(Wx * 0.75), 6)), 0)
+        trace(sx, sy, ang, rng.randint(max(int(Wx * 0.30), 4), max(int(Wx * 0.60), 6)), 0)
 
 
 def _dessiner_oeil(grille, W, H, ouv, gx, gy, dil, f, veines=1.0):
@@ -553,7 +553,7 @@ def _dessiner_oeil(grille, W, H, ouv, gx, gy, dil, f, veines=1.0):
         nx = ex / Wx
         if abs(nx) >= 1.0:
             return 0.0
-        return ouv * Hy * (1.0 - nx * nx) ** 0.60   # exposant bas = coins plus pointus (étiré)
+        return ouv * Hy * (1.0 - nx * nx) ** 0.52   # exposant bas = coins plus pointus (étiré)
 
     y0, y1 = max(cy - Hy - 2, 0), min(cy + Hy + 3, H)
     x0, x1 = max(cx - Wx - 1, 0), min(cx + Wx + 2, W)
@@ -578,13 +578,13 @@ def _dessiner_oeil(grille, W, H, ouv, gx, gy, dil, f, veines=1.0):
             if r <= Rp - 0.5:                        # --- pupille (noir profond) ---
                 ch, col = "█", (3, 5, 11)
             elif r <= Rp + 0.4:                      # bord adouci de la pupille
-                ch, col = "▓", (9, 13, 24)
+                ch, col = "▓", (18, 6, 8)
             elif r <= Ri:                            # --- iris bleu, très détaillé ---
                 rn = (r - Rp) / max(Ri - Rp, 0.01)   # 0 au bord pupille → 1 au limbe
                 fib = 0.5 + 0.5 * math.sin(th * 46 + r * 0.9)      # fibres radiales fines
                 cry = 0.5 + 0.5 * math.sin(th * 6 - r * 1.8 + 0.7)  # cryptes plus larges
-                cc = (70, 190, 240)                  # centre clair (cyan)
-                ec = (16, 52, 120)                   # bord profond (bleu nuit)
+                cc = (255, 95, 68)                   # centre incandescent (rouge-orangé)
+                ec = (82, 10, 14)                    # bord profond (rouge sombre)
                 base = [cc[i] + (ec[i] - cc[i]) * rn for i in range(3)]
                 br = (0.70 + 0.42 * fib) * (0.85 + 0.30 * cry)
                 if 0.10 < rn < 0.24:                 # collerette claire autour de la pupille
@@ -624,7 +624,7 @@ def _dessiner_oeil(grille, W, H, ouv, gx, gy, dil, f, veines=1.0):
             grille[hy][hx] = ("█", _txt(*c), None)
     sx, sy = int(icx + Ri * 0.6), int(icy + Ri * 0.5)
     if 0 <= sx < W and 0 <= sy < H and abs(sy - cy) <= lid(sx - cx):
-        grille[sy][sx] = ("▓", _txt(120, 150, 180), None)
+        grille[sy][sx] = ("▓", _txt(170, 110, 105), None)
 
     # --- paupières + cils ---
     for x in range(max(cx - Wx, 0), min(cx + Wx + 1, W)):
