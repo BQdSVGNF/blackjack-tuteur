@@ -522,14 +522,12 @@ def _boucle(historique, conf):
     if not ui.ecran_accueil(NOM_IA):     # ÉCHAP sur l'écran d'accueil → on quitte
         return
     while True:
-        if ui.sur_menu:
-            ui.demarrer_pulsation()      # fond animé pendant l'attente de saisie
         try:
-            saisie = ui.demander_saisie().strip()
+            # Sur le menu : saisie + fond animé sur un seul thread (ce qu'on tape
+            # reste visible). En conversation : saisie classique qui défile.
+            saisie = (ui.saisie_menu() if ui.sur_menu else ui.demander_saisie()).strip()
         except (EOFError, KeyboardInterrupt):
             break
-        finally:
-            ui.arreter_pulsation()
         if not saisie:
             if ui.sur_menu:
                 ui.afficher_menu(NOM_IA)     # Entrée seule : réajuste le menu à la fenêtre
@@ -542,7 +540,11 @@ def _boucle(historique, conf):
         if saisie == "14" or saisie.lower() in ("params", "paramètres", "parametres"):
             ecran_parametres(conf)       # redessine le menu en sortant
             continue
-        ui.sur_menu = False              # à partir d'ici l'écran défile, plus de pulsation
+        if ui.sur_menu:                  # 1re sortie du menu → écran propre (style conversation)
+            est_ia = saisie in ("1", "3") or RACCOURCIS.get(saisie, ("",))[0] == "prompt" \
+                or (RACCOURCIS.get(saisie) is None and saisie.lower() != "reset")
+            ui.debut_conversation("IA" if est_ia else "console")
+        ui.sur_menu = False              # à partir d'ici l'écran défile
         if saisie.lower() == "reset":
             historique.clear()
             ui.info("\n♠ Nouvelle partie : mémoire effacée.", ui.OR)

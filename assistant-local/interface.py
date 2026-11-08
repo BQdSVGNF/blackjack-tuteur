@@ -479,6 +479,61 @@ class _Clavier:
         except Exception:
             return None
 
+    def evenements(self):
+        """Lit TOUTES les touches dispo (non bloquant) pour un éditeur de ligne.
+        Renvoie une liste d'événements : ('char', c) / ('enter',) / ('back',) /
+        ('esc',) / ('ctrl-c',)."""
+        evs = []
+        if not self.ok:
+            return evs
+        try:
+            if self.nt:
+                while self.msvcrt.kbhit():
+                    ch = self.msvcrt.getwch()
+                    if ch in ("\x00", "\xe0"):               # touche spéciale (flèche…)
+                        if self.msvcrt.kbhit():
+                            self.msvcrt.getwch()
+                        continue
+                    evs.append(self._classer(ch))
+                return evs
+            import select
+            r, _, _ = select.select([self.fd], [], [], 0)
+            if not r:
+                return evs
+            data = os.read(self.fd, 256)
+            s = data.decode("utf-8", "ignore")
+            i, n = 0, len(s)
+            while i < n:
+                ch = s[i]
+                if ch == "\x1b":                             # ESC seul, ou séquence (flèche)
+                    if i + 1 < n and s[i + 1] == "[":
+                        i += 2
+                        while i < n and not s[i].isalpha():
+                            i += 1
+                        i += 1
+                        continue
+                    evs.append(("esc",))
+                else:
+                    evs.append(self._classer(ch))
+                i += 1
+            return evs
+        except Exception:
+            return evs
+
+    @staticmethod
+    def _classer(ch):
+        if ch in ("\r", "\n"):
+            return ("enter",)
+        if ch in ("\x7f", "\b"):
+            return ("back",)
+        if ch == "\x1b":
+            return ("esc",)
+        if ch == "\x03":
+            return ("ctrl-c",)
+        if ch < " ":
+            return ("autre",)
+        return ("char", ch)
+
 
 def _nouvelle_grille(W, H):
     return [[(" ", None, None) for _ in range(W)] for _ in range(H)]
@@ -1174,10 +1229,6 @@ def _repaint_menu(i_teinte, tetes, f):
     buf = ["\x1b7"]
     dec = _menu_offset
     for ry in range(_menu_bas):
-        if _titre_haut <= ry < _titre_haut + LOGO_ROWS:  # lignes du titre → teinte
-            ligne = _LOGO_TEINTES[i_teinte][ry - _titre_haut]
-            buf.append(f"\x1b[{ry + 1};1H" + BASE + "\x1b[K" + " " * (dec + _titre_marge) + ligne)
-            continue
         row = _grille_menu[ry]
         bout = [f"\x1b[{ry + 1};1H" + BASE + "\x1b[K" + " " * dec]
         cfg = cbg = None
@@ -1203,6 +1254,9 @@ def _repaint_menu(i_teinte, tetes, f):
                 bout.append(dbg); cbg = dbg
             bout.append(ch2)
         buf.append("".join(bout))
+        if _titre_haut <= ry < _titre_haut + LOGO_ROWS:   # superpose le logo cyclé (pluie derrière)
+            ligne = _LOGO_TEINTES[i_teinte][ry - _titre_haut]
+            buf.append(f"\x1b[{ry + 1};{1 + dec + _titre_marge}H" + BASE + ligne)
     buf.append("\x1b8")
     return "".join(buf)
 
@@ -1272,6 +1326,94 @@ def arreter_pulsation():
         if _grille_menu:
             _ecrire(_repaint_menu(0, None, 0))   # menu net, sans pluie
 
+
+def _tetes_pluie(W, bas, rng):
+    tetes = []
+    for _ in range(W):
+        if rng.random() < PLUIE_DENSITE:
+            tetes.append([rng.uniform(-bas, 0.0), rng.uniform(0.6, 1.5) * PLUIE_VITESSE,
+                          rng.randint(4, max(5, bas - 2))])
+        else:
+            tetes.append([0.0, 0.0, 0])
+    return tetes
+
+
+def _rendu_ligne_saisie(texte, W):
+    """Ligne d'invite dessinée SOUS le menu. Comme on l'affiche nous-mêmes, ce
+    qu'on tape reste toujours visible (pas de course avec l'écho du terminal)."""
+    y = _menu_bas + 2
+    prompt = "♠ black-jack ▸ "
+    marge = _menu_offset + 2
+    dispo = max(W - marge - len(prompt) - 2, 8)
+    vis = texte[-dispo:] if len(texte) > dispo else texte
+    return (f"\x1b[{y};1H" + BASE + "\x1b[K" + " " * marge
+            + OR + GRAS + prompt + BASE + BLANC + vis
+            + _txt(120, 235, 150) + "█" + BASE)
+
+
+def saisie_menu():
+    """Affiche le menu animé ET lit la saisie sur un seul thread : ce qu'on tape
+    s'affiche toujours. Renvoie la ligne validée (Entrée)."""
+    if not (_grille_menu and MENU_ANIME and ANIMATIONS and _LOGO_TEINTES
+            and sys.stdout.isatty()):
+        return demander_saisie()                 # repli : saisie classique
+    rng = random.Random()
+    W, bas = len(_grille_menu[0]), _menu_bas
+    tetes = _tetes_pluie(W, bas, rng)
+    n = len(_LOGO_TEINTES)
+    texte, f = [], 0
+    _cacher_curseur()
+    try:
+        with _Clavier() as kb:
+            if not kb.ok:                        # pas de clavier brut → repli
+                _montrer_curseur()
+                return demander_saisie()
+            while True:
+                if _dim() != _taille_menu:       # fenêtre redimensionnée
+                    afficher_menu(_modele_menu)
+                    W, bas = len(_grille_menu[0]), _menu_bas
+                    tetes = _tetes_pluie(W, bas, rng)
+                for t in tetes:
+                    if t[2] == 0:
+                        continue
+                    t[0] += t[1]
+                    if t[0] - t[2] > bas:
+                        t[0] = rng.uniform(-bas, 0.0)
+                        t[1] = rng.uniform(0.6, 1.5) * PLUIE_VITESSE
+                        t[2] = rng.randint(4, max(5, bas - 2))
+                _poser_horloge(_grille_menu, W)
+                teinte = (f % n) if TITRE_CYCLE else 0
+                _ecrire(_repaint_menu(teinte, tetes, f) + _rendu_ligne_saisie("".join(texte), W))
+                for ev in kb.evenements():
+                    quoi = ev[0]
+                    if quoi == "enter":
+                        return "".join(texte)
+                    if quoi == "ctrl-c":
+                        raise KeyboardInterrupt
+                    if quoi == "back":
+                        if texte:
+                            texte.pop()
+                    elif quoi == "char":
+                        texte.append(ev[1])
+                f += 1
+                time.sleep(0.06)
+    finally:
+        _montrer_curseur()
+
+
+def debut_conversation(sous_titre=""):
+    """Quitte le menu animé pour un écran propre (conversation IA / sortie)."""
+    global sur_menu
+    sur_menu = False
+    _montrer_curseur()
+    _ecrire(BASE + "\x1b[2J\x1b[H")
+    W = min(largeur(), 400)
+    gauche = "  ◢ BLACK JACK ◣" + (f"   ·   {sous_titre}" if sous_titre else "")
+    droite = "« menu » pour revenir  "
+    plein = max(W - _long_visible(gauche) - len(droite), 1)
+    barre = gauche + " " * plein + droite
+    _ecrire(BAR_BG + _txt(205, 215, 235) + barre[:W] + BASE + "\n")
+    _ecrire(DISCRET + "  " + "─" * min(W - 4, 100) + BASE + "\n")
 
 def _ligne_ansi(rangee):
     """Rend une ligne de cellules (char, fg, bg) en une chaîne ANSI."""
@@ -1481,7 +1623,7 @@ def ecran_sortie():
 # ---------- Conversation ----------
 
 def _invite():
-    return "\n" + OR + GRAS + "♣ Toi ›" + RESET + FOND + BLANC + " "
+    return "\n" + OR + GRAS + "  ♠ toi ▸ " + RESET + FOND + BLANC
 
 
 def demander_saisie():
@@ -1501,7 +1643,7 @@ def demander_texte(invite):
 
 
 def etiquette_ia():
-    _ecrire("\n" + VERT + GRAS + "♠ Black Jack ›" + BASE + " ")
+    _ecrire("\n" + _txt(236, 82, 96) + GRAS + "  ◆ black jack ▸ " + BASE + TEXTE + " ")
 
 
 def morceau_ia(texte):
