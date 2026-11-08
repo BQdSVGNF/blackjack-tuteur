@@ -985,7 +985,7 @@ _modele_menu = ""          # nom affiché, pour recomposer après un redimension
 _menu_offset = 0           # marge gauche pour centrer le menu dans la fenêtre
 
 # --- Console vivante (barre du haut + stats en direct) ---
-_titre_haut = 4            # ligne où commence le logo (après l'entête console)
+_titre_haut = 2            # ligne où commence le logo (après la barre du haut)
 _ligne_horloge = 0         # ligne de l'horloge
 _col_horloge = 0           # colonne de l'horloge
 _ligne_stats = 2           # ligne des jauges CPU/RAM/disque
@@ -1145,30 +1145,26 @@ def _poser_stats(grille, W):
 
 
 def _poser_entete(grille, W, modele):
-    """Barre de titre (ligne 0) + statut opérateur (ligne 1)."""
-    if len(grille) < 2:
+    """Barre du haut, épurée : ♠ BLACK JACK · badge EN LIGNE/HORS-LIGNE · horloge.
+    (Plus de CPU/RAM/disque/IP/opérateur : seul l'état en ligne/hors-ligne reste.)"""
+    if len(grille) < 1:
         return
     row0 = grille[0]
     for c in range(W):
         row0[c] = [" ", None, BAR_BG]
-    for i, ch in enumerate("◤ BLACK JACK ◢"):
+    for i, ch in enumerate("♠ BLACK JACK"):          # marque à gauche
         if 2 + i < W:
-            row0[2 + i] = [ch, _txt(155, 215, 255), BAR_BG]
-    enl = "● EN LIGNE"
-    mx = max((W - len(enl)) // 2, 0)
-    for i, ch in enumerate(enl):
+            row0[2 + i] = [ch, _txt(235, 70, 80) if ch == "♠" else _txt(190, 205, 230), BAR_BG]
+    if _ia_turbo:                                     # badge état IA (centré)
+        badge = f"● EN LIGNE · {_ia_modele}"
+        cpt = _txt(90, 235, 140)
+    else:
+        badge = "○ HORS-LIGNE · IA locale"
+        cpt = _txt(150, 160, 178)
+    mx = max((W - len(badge)) // 2, 0)
+    for i, ch in enumerate(badge):
         if 0 <= mx + i < W:
-            row0[mx + i] = [ch, _txt(90, 235, 140) if ch == "●" else _txt(150, 210, 180), BAR_BG]
-    u, host = _op_cache
-    mode_ia = f"IA TURBO · {_ia_modele}" if _ia_turbo else (f"IA locale · {_ia_modele}" if _ia_modele else "IA locale")
-    etat = "● EN LIGNE" if _ia_turbo else "○ HORS-LIGNE"
-    stat = f"OPÉRATEUR {u}@{host}  ·  SESSION #{_sess_id}  ·  {mode_ia}  ·  {etat}"
-    row1 = grille[1]
-    for c in range(W):
-        row1[c] = [" ", None, HDR_BG]
-    for i, ch in enumerate(stat):
-        if 2 + i < W:
-            row1[2 + i] = [ch, _txt(110, 150, 185), HDR_BG]
+            row0[mx + i] = [ch, cpt if ch in "●○" else _txt(150, 165, 188), BAR_BG]
 
 
 def _repaint_menu(i_teinte, tetes, f):
@@ -1251,8 +1247,6 @@ class _Pulsation(threading.Thread):
                     t[1] = rng.uniform(0.6, 1.5) * PLUIE_VITESSE
                     t[2] = rng.randint(4, max(5, bas - 2))
             _poser_horloge(_grille_menu, W)            # horloge en direct
-            if f % 11 == 0:                            # stats ~1×/s
-                _poser_stats(_grille_menu, W)
             teinte = (i % n) if TITRE_CYCLE else 0
             _ecrire(_repaint_menu(teinte, tetes, f))
             i += 1
@@ -1292,47 +1286,77 @@ def _ligne_ansi(rangee):
     return "".join(morceaux)
 
 
+# Couleurs d'enseigne (une par panneau), palette casino/hacker épurée
+C_PIQUE = _txt(212, 222, 238)    # ♠ argent froid
+C_COEUR = _txt(236, 82, 96)      # ♥ rouge
+C_CARREAU = _txt(240, 182, 84)   # ♦ ambre / or
+C_TREFLE = _txt(84, 212, 150)    # ♣ émeraude
+
+
 def _boite_cellules(titre, entrees, couleur):
-    """Une boîte encadrée sous forme de cellules (char, fg, bg)."""
+    """Un panneau élégant (coins arrondis, titre à gauche) en cellules (char,fg,bg)."""
     dedans = LARGEUR_BOITE - 2
-    t = f" {titre} "
-    reste = dedans - len(t)
-    g, d = max(reste // 2, 0), max(reste - reste // 2, 0)
-    rows = [[(ch, couleur, None) for ch in "┌" + "─" * g + t + "─" * d + "┐"]]
+    t = f"─ {titre} "
+    reste = max(dedans - len(t), 0)
+    rows = [[(ch, couleur, None) for ch in "╭" + t + "─" * reste + "╮"]]
     for num, label in entrees:
-        cells = [(c, OR, None) for c in f" [{num:>2}] "] + [(c, TEXTE, None) for c in label]
+        cells = [(" ", "", None), ("▸", couleur, None), (" ", "", None)]
+        cells += [(c, OR, None) for c in f"{num:>2}"]
+        cells += [(c, DISCRET, None) for c in " · "]
+        cells += [(c, TEXTE, None) for c in label]
         while len(cells) < dedans:
-            cells.append((" ", "", None))      # "" = occupé (pas de pluie), mais rendu vide
+            cells.append((" ", "", None))      # "" = occupé (pas de pluie), rendu vide
         rows.append([("│", couleur, None)] + cells[:dedans] + [("│", couleur, None)])
-    rows.append([(ch, couleur, None) for ch in "└" + "─" * dedans + "┘"])
+    rows.append([(ch, couleur, None) for ch in "╰" + "─" * dedans + "╯"])
     return rows
 
 
+def _poser_signature(grille, W, row_top):
+    """Deux mini-cartes A♠ J♠ + « 21 », la signature Black Jack, sous le logo."""
+    cartes = [("A", "♠"), ("J", "♠")]
+    cw = 5
+    bloc = len(cartes) * (cw + 1) - 1
+    tag = "  21  ·  table privée"
+    x0 = max((W - (bloc + len(tag))) // 2, 0)
+    bord = _txt(120, 130, 150)
+    argent = _txt(228, 232, 242)
+    def put(r, c, ch, col):
+        if 0 <= r < len(grille) and 0 <= c < W:
+            grille[r][c] = [ch, col, None]
+    for ci, (v, s) in enumerate(cartes):
+        cx = x0 + ci * (cw + 1)
+        for dx, ch in enumerate("┌───┐"):
+            put(row_top, cx + dx, ch, bord)
+        scol = C_COEUR if s in "♥♦" else argent
+        for dx, (ch, col) in enumerate([("│", bord), (v, argent), (" ", None), (s, scol), ("│", bord)]):
+            put(row_top + 1, cx + dx, ch, col or bord)
+        for dx, ch in enumerate("└───┘"):
+            put(row_top + 2, cx + dx, ch, bord)
+    tr, tx = row_top + 1, x0 + bloc
+    for i, ch in enumerate(tag):
+        put(tr, tx + i, ch, OR if ch.isdigit() else DISCRET)
+
+
 def _composer_menu(modele):
-    """Console : entête (barre + stats en direct) puis logo, modules, invite."""
-    global _ligne_horloge, _col_horloge, _ligne_stats, _ip_cache, _op_cache, _sess_id
+    """L'écran principal : barre épurée, logo, signature A♠J♠, 4 panneaux, invite."""
+    global _ligne_horloge, _col_horloge
     taille = _Taille()
     W = max(min(taille.columns - 1, 400), 2 * LARGEUR_BOITE + 3)   # la pluie remplit toute la largeur
     marge = max((W - (2 * LARGEUR_BOITE + 3)) // 2, 0)
     ml = max((W - LOGO_COLS) // 2, 0)
-    if not _ip_cache:
-        _ip_cache = _ip_locale()
-    _op_cache = _operateur()
-    if not _sess_id:
-        _sess_id = f"{os.getpid() & 0xFFFF:04X}"
-    _ligne_horloge, _ligne_stats = 0, 2
+    _ligne_horloge = 0
     _col_horloge = max(W - 10, 0)
     sections = [
-        ("♠ TABLE — L'IA", [("1", "Discuter (tape ton message)"), ("2", "Recherche web sourcée"),
-                            ("3", "CODEX — coder (C++, Python, web…)"),
-                            ("4", "Nouvelle partie (efface la mémoire)")], VERT),
-        ("♥ STRATÉGIE BLACKJACK", [("5", "Stratégie de base"), ("6", "Apprendre à compter (Hi-Lo)"),
-                                   ("7", "Quiz : que faire ?")], ROUGE),
-        ("♦ SYSTÈME — ma machine", [("8", "Infos système"), ("9", "Espace disque"),
+        ("♠ TABLE · L'IA", [("1", "Discuter (tape ton message)"), ("2", "Recherche web sourcée"),
+                            ("3", "CODEX · coder (C++, Python…)"),
+                            ("4", "Nouvelle partie (reset mémoire)")], C_PIQUE),
+        ("♥ STRATÉGIE · 21", [("5", "Stratégie de base"), ("6", "Apprendre à compter (Hi-Lo)"),
+                              ("7", "Quiz : que faire ?")], C_COEUR),
+        ("♦ SYSTÈME · ma machine", [("8", "Infos système"), ("9", "Espace disque"),
                                     ("10", "Lancer un programme"),
-                                    ("14", "Paramètres (Spotify, couleurs…)")], OR),
-        ("♣ RÉSEAU — ma connexion", [("11", "Mon adresse IP"), ("12", "Tester ma connexion (ping)"),
-                                     ("13", "Mes connexions actives")], CYAN),
+                                    ("14", "Paramètres (IA, Spotify, son…)")], C_CARREAU),
+        ("♣ RÉSEAU · ma connexion", [("11", "Mon adresse IP"), ("12", "Tester ma connexion (ping)"),
+                                     ("13", "Mes connexions actives")], C_TREFLE),
     ]
     boites = [_boite_cellules(*s) for s in sections]
     lignes = []
@@ -1354,29 +1378,26 @@ def _composer_menu(modele):
             for j, cell in enumerate(brow):
                 row[col + j] = list(cell)
 
-    for r in range(_titre_haut + LOGO_ROWS):          # réserve entête + zone logo
+    for r in range(_titre_haut + LOGO_ROWS):          # réserve la barre + la zone logo
         at(r)
-    _poser_entete(lignes, W, modele)                  # barre + statut opérateur
+    _poser_entete(lignes, W, modele)                  # barre épurée (état en ligne/hors-ligne)
     _poser_horloge(lignes, W)
-    _poser_stats(lignes, W)
-    for cr in range(LOGO_ROWS):                       # titre (teinte de base)
+    for cr in range(LOGO_ROWS):                       # logo (teinte de base, cyclé par le thread)
         row = at(_titre_haut + cr)
         for x in range(LOGO_COLS):
             row[ml + x] = ["▀", _txt(*LOGO[2 * cr][x]), _fond(*LOGO[2 * cr + 1][x])]
-    if _ia_turbo:
-        sous = f"▓▒░  IA TURBO · {_ia_modele} · en ligne  ░▒▓"
-    else:
-        sous = f"▓▒░  IA locale · {_ia_modele or modele} · hors-ligne · chiffré  ░▒▓"
-    base_sous = _titre_haut + LOGO_ROWS + 1
-    texte(base_sous, max((W - len(sous)) // 2, 0), sous, DISCRET)
-    r1 = base_sous + 2
+    base_sig = _titre_haut + LOGO_ROWS + 1            # signature A♠ J♠ · 21
+    for r in range(base_sig, base_sig + 3):
+        at(r)
+    _poser_signature(lignes, W, base_sig)
+    r1 = base_sig + 4                                 # 1ère rangée de panneaux
     poser(r1, marge, boites[0]); poser(r1, marge + LARGEUR_BOITE + 3, boites[1])
     r2 = r1 + max(len(boites[0]), len(boites[1])) + 1
     poser(r2, marge, boites[2]); poser(r2, marge + LARGEUR_BOITE + 3, boites[3])
     rh = r2 + max(len(boites[2]), len(boites[3])) + 1
-    texte(rh, 3, "Tape un numéro, un message, menu pour revoir ceci, ou exit pour quitter.", DISCRET)
-    texte(rh + 1, 0, "─" * min(W - 1, 90), DISCRET)
-    bas = rh + 2
+    aide = "╾  tape un numéro · un message pour l'IA · « menu » · « exit »  ╼"
+    texte(rh, max((W - len(aide)) // 2, 0), aide, DISCRET)
+    bas = rh + 1
     while len(lignes) < bas:
         at(bas - 1)
     return lignes[:bas], bas, ml
