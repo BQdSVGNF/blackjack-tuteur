@@ -1301,6 +1301,8 @@ class _Pulsation(threading.Thread):
                     t[1] = rng.uniform(0.6, 1.5) * PLUIE_VITESSE
                     t[2] = rng.randint(4, max(5, bas - 2))
             _poser_horloge(_grille_menu, W)            # horloge en direct
+            if f % 12 == 0:
+                _maj_moniteur(_grille_menu, W)
             teinte = (i % n) if TITRE_CYCLE else 0
             _ecrire(_repaint_menu(teinte, tetes, f))
             i += 1
@@ -1382,6 +1384,8 @@ def saisie_menu():
                         t[1] = rng.uniform(0.6, 1.5) * PLUIE_VITESSE
                         t[2] = rng.randint(4, max(5, bas - 2))
                 _poser_horloge(_grille_menu, W)
+                if f % 12 == 0:
+                    _maj_moniteur(_grille_menu, W)
                 teinte = (f % n) if TITRE_CYCLE else 0
                 _ecrire(_repaint_menu(teinte, tetes, f) + _rendu_ligne_saisie("".join(texte), W))
                 for ev in kb.evenements():
@@ -1479,12 +1483,141 @@ def _poser_signature(grille, W, row_top):
         put(tr, tx + i, ch, OR if ch.isdigit() else DISCRET)
 
 
+# --- Panneaux « opérateur » (dashboard) ---
+NEON_V = _txt(90, 240, 150)        # vert néon
+NEON_C = _txt(90, 220, 240)        # cyan néon
+_sys_col = -1                      # colonne des jauges (maj en direct)
+_sys_row0 = -1                     # 1re ligne de jauge
+_sys_inner = 0                     # largeur intérieure du panneau moniteur
+
+
+def _panneau(titre, contenu, largeur, couleur):
+    """Panneau encadré à titre entre crochets : ╭─[ TITRE ]──╮ … ╰──╯."""
+    inner = largeur - 2
+    etiq = f"[ {titre} ]"
+    reste = max(inner - len(etiq) - 1, 0)
+    rows = [[(ch, couleur, None) for ch in "╭─" + etiq + "─" * reste + "╮"]]
+    for ligne in contenu:
+        cells = [(" ", "", None)]
+        for seg_txt, seg_col in ligne:
+            for ch in seg_txt:
+                cells.append((ch, seg_col or "", None))
+        while len(cells) < inner:
+            cells.append((" ", "", None))
+        rows.append([("│", couleur, None)] + cells[:inner] + [("│", couleur, None)])
+    rows.append([(ch, couleur, None) for ch in "╰" + "─" * inner + "╯"])
+    return rows
+
+
+def _pf(p):
+    return f"{p:>3}%" if p is not None else " --%"
+
+
+def _contenu_moniteur(inner):
+    barw = max(inner - 10, 4)
+    cpu, ram, dsk = _stat_cpu(), _stat_ram(), _stat_disque()
+    jl = lambda lbl, p: [(f"{lbl} ", DISCRET), (_jauge(p, barw), _coul_niveau(p)),
+                         (" " + _pf(p), _coul_niveau(p))]
+    return [jl("CPU", cpu), jl("MÉM", ram), jl("DSK", dsk)]
+
+
+def _maj_moniteur(grille, W):
+    """Réécrit les 3 jauges CPU/MÉM/DSK en direct (sans recomposer le menu)."""
+    if _sys_col < 0 or _sys_row0 < 0:
+        return
+    for i, ligne in enumerate(_contenu_moniteur(_sys_inner)):
+        r = _sys_row0 + i
+        if not (0 <= r < len(grille)):
+            continue
+        x = _sys_col + 1
+        for c in range(_sys_col + 1, _sys_col + 1 + _sys_inner):
+            if 0 <= c < W:
+                grille[r][c] = [" ", "", None]
+        for seg_txt, seg_col in ligne:
+            for ch in seg_txt:
+                if 0 <= x < W:
+                    grille[r][x] = [ch, seg_col or "", None]
+                x += 1
+
+
+def _contenu_reseau(inner):
+    etat = ("● EN LIGNE", NEON_V) if _ia_turbo else ("○ HORS-LIGNE", DISCRET)
+    return [
+        [("IP   ", DISCRET), ((_ip_cache or "—"), _txt(120, 220, 200))],
+        [("IA   ", DISCRET), etat],
+        [("", "")],
+        [("◆ TAPIS   ", DISCRET), ("OK", NEON_V)],
+        [("◆ COFFRE  ", DISCRET), ("OK", NEON_V)],
+        [("◆ SCAN    ", DISCRET), ("…", _txt(240, 190, 90))],
+    ]
+
+
+# ---------- Table de stratégie Black Jack (option 5) ----------
+# Colonnes = carte visible du croupier : 2 3 4 5 6 7 8 9 10 A
+# S=rester (stand) · H=tirer (hit) · D=doubler · P=séparer
+_STRAT_DUR = [("8", "HHHHHHHHHH"), ("9", "HDDDDHHHHH"), ("10", "DDDDDDDDHH"),
+              ("11", "DDDDDDDDDH"), ("12", "HHSSSHHHHH"), ("13", "SSSSSHHHHH"),
+              ("14", "SSSSSHHHHH"), ("15", "SSSSSHHHHH"), ("16", "SSSSSHHHHH"),
+              ("17+", "SSSSSSSSSS")]
+_STRAT_SOUPLE = [("A,2", "HHHDDHHHHH"), ("A,3", "HHHDDHHHHH"), ("A,4", "HHDDDHHHHH"),
+                 ("A,5", "HHDDDHHHHH"), ("A,6", "HDDDDHHHHH"), ("A,7", "SDDDDSSHHH"),
+                 ("A,8", "SSSSSSSSSS"), ("A,9", "SSSSSSSSSS")]
+_STRAT_PAIRES = [("2-2", "PPPPPPHHHH"), ("3-3", "PPPPPPHHHH"), ("4-4", "HHHPPHHHHH"),
+                 ("5-5", "DDDDDDDDHH"), ("6-6", "PPPPPHHHHH"), ("7-7", "PPPPPPHHHH"),
+                 ("8-8", "PPPPPPPPPP"), ("9-9", "PPPPPSPPSS"), ("T-T", "SSSSSSSSSS"),
+                 ("A-A", "PPPPPPPPPP")]
+_STRAT_COUL = {"S": _txt(90, 230, 140), "H": _txt(150, 160, 175),
+               "D": _txt(240, 185, 80), "P": _txt(95, 200, 245)}
+
+
+def montrer_strategie():
+    """Affiche la table de stratégie de base du Black Jack (écran dédié)."""
+    debut_conversation("STRATÉGIE DE BASE · 21")
+    ENT = _txt(120, 210, 235)
+
+    def entete():
+        s = "        " + "".join(f"{c:>4}" for c in
+                                 ["2", "3", "4", "5", "6", "7", "8", "9", "10", "A"])
+        _ecrire("\n  " + ENT + GRAS + "            carte du croupier" + BASE + "\n")
+        _ecrire("  " + DISCRET + s + BASE + "\n")
+
+    def bloc(titre, lignes):
+        _ecrire("\n  " + OR + GRAS + "▸ " + titre + BASE + "\n")
+        for nom, codes in lignes:
+            ligne = [BASE + "  " + _txt(205, 212, 225) + f"{nom:>5}  "]
+            for code in codes:
+                ligne.append(_STRAT_COUL.get(code, TEXTE) + f"{code:>4}")
+            _ecrire("".join(ligne) + BASE + "\n")
+
+    entete()
+    bloc("MAINS DURES (total)", _STRAT_DUR)
+    bloc("MAINS SOUPLES (As + carte)", _STRAT_SOUPLE)
+    bloc("PAIRES (séparer ?)", _STRAT_PAIRES)
+    _ecrire("\n  " + _STRAT_COUL["S"] + "S" + DISCRET + " rester   "
+            + _STRAT_COUL["H"] + "H" + DISCRET + " tirer   "
+            + _STRAT_COUL["D"] + "D" + DISCRET + " doubler   "
+            + _STRAT_COUL["P"] + "P" + DISCRET + " séparer" + BASE + "\n")
+    _ecrire("\n  " + DISCRET + "(base : croupier reste à 17, plusieurs jeux)  ·  "
+            + "« menu » pour revenir" + BASE + "\n")
+
+
 def _composer_menu(modele):
-    """L'écran principal : barre épurée, logo, signature A♠J♠, 4 panneaux, invite."""
-    global _ligne_horloge, _col_horloge
+    """L'écran principal (dashboard si la fenêtre est large) : logo, signature,
+    menu central encadré par les panneaux MONITEUR et RÉSEAU, invite."""
+    global _ligne_horloge, _col_horloge, _ip_cache, _sys_col, _sys_row0, _sys_inner
     taille = _Taille()
     W = max(min(taille.columns - 1, 400), 2 * LARGEUR_BOITE + 3)   # la pluie remplit toute la largeur
-    marge = max((W - (2 * LARGEUR_BOITE + 3)) // 2, 0)
+    if not _ip_cache:
+        _ip_cache = _ip_locale()
+    centre_w = 2 * LARGEUR_BOITE + 3
+    cote = (W - centre_w - 4) // 2
+    dashboard = cote >= 20                             # assez large → panneaux latéraux
+    side = min(cote, 34)
+    if dashboard:
+        marge = max((W - (2 * side + centre_w + 4)) // 2, 0) + side + 2
+    else:
+        marge = max((W - centre_w) // 2, 0)
+        _sys_col = _sys_row0 = -1
     ml = max((W - LOGO_COLS) // 2, 0)
     _ligne_horloge = 0
     _col_horloge = max(W - 10, 0)
@@ -1532,11 +1665,28 @@ def _composer_menu(modele):
     for r in range(base_sig, base_sig + 3):
         at(r)
     _poser_signature(lignes, W, base_sig)
-    r1 = base_sig + 4                                 # 1ère rangée de panneaux
+    r1 = base_sig + 4                                 # 1ère rangée de panneaux (menu central)
     poser(r1, marge, boites[0]); poser(r1, marge + LARGEUR_BOITE + 3, boites[1])
     r2 = r1 + max(len(boites[0]), len(boites[1])) + 1
     poser(r2, marge, boites[2]); poser(r2, marge + LARGEUR_BOITE + 3, boites[3])
     rh = r2 + max(len(boites[2]), len(boites[3])) + 1
+
+    if dashboard:                                     # panneaux latéraux « opérateur »
+        _sys_inner = side - 2
+        pan_moni = _panneau("MONITEUR_V7", _contenu_moniteur(_sys_inner), side, NEON_V)
+        pan_res = _panneau("RÉSEAU_V3", _contenu_reseau(side - 2), side, NEON_C)
+        col_g = marge - side - 2
+        col_d = marge + centre_w + 2
+        poser(r1, col_g, pan_moni)
+        _sys_col, _sys_row0 = col_g, r1 + 1           # pour la maj en direct des jauges
+        poser(r1, col_d, pan_res)
+        # petit log décoratif sous le moniteur (aligné sur la hauteur du menu)
+        logs = [[("> boot ....... ", DISCRET), ("OK", NEON_V)],
+                [("> coffre ..... ", DISCRET), ("OK", NEON_V)],
+                [("> IA ......... ", DISCRET), ("PRÊTE", NEON_V)]]
+        poser(r1 + len(pan_moni) + 1, col_g, _panneau("LOG_V13", logs, side, _txt(150, 160, 180)))
+
+    rh += 1
     aide = "╾  tape un numéro · un message pour l'IA · « menu » · « exit »  ╼"
     texte(rh, max((W - len(aide)) // 2, 0), aide, DISCRET)
     bas = rh + 1

@@ -540,6 +540,9 @@ def _boucle(historique, conf):
         if saisie == "14" or saisie.lower() in ("params", "paramètres", "parametres"):
             ecran_parametres(conf)       # redessine le menu en sortant
             continue
+        if saisie == "5" or saisie.lower() in ("strategie", "stratégie", "strat"):
+            ui.montrer_strategie()       # table de stratégie de base (écran dédié)
+            continue
         if ui.sur_menu:                  # 1re sortie du menu → écran propre (style conversation)
             est_ia = saisie in ("1", "3") or RACCOURCIS.get(saisie, ("",))[0] == "prompt" \
                 or (RACCOURCIS.get(saisie) is None and saisie.lower() != "reset")
