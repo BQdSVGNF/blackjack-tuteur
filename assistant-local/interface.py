@@ -133,9 +133,22 @@ def effacer():
     _ecrire(BASE + "\x1b[2J\x1b[H")
 
 
-def _agrandir_windows():
-    """Console Windows héritée (conhost) : remplit TOUT l'écran. On met le buffer
-    ET la fenêtre à la taille maximale qui tient à l'écran (au font courant)."""
+def _conhost_classique():
+    """Vrai ? → console Windows héritée « nue » (conhost), où l'on peut régler la
+    taille du buffer sans risque. Faux pour Windows Terminal / VS Code / autres :
+    là, toucher au buffer DÉSYNCHRONISE la taille réelle et casse l'affichage."""
+    if os.name != "nt":
+        return False
+    for v in ("WT_SESSION", "WT_PROFILE_ID", "TERM_PROGRAM",
+              "VSCODE_INJECTION", "VSCODE_PID", "ConEmuPID"):
+        if os.environ.get(v):
+            return False
+    return True
+
+
+def _agrandir_conhost():
+    """conhost SEULEMENT : buffer ET fenêtre à la taille max de l'écran (sûr ici,
+    car on règle les deux ensemble → pas de désynchronisation)."""
     import ctypes
     k32, u32 = ctypes.windll.kernel32, ctypes.windll.user32
 
@@ -146,33 +159,42 @@ def _agrandir_windows():
         _fields_ = [("Left", ctypes.c_short), ("Top", ctypes.c_short),
                     ("Right", ctypes.c_short), ("Bottom", ctypes.c_short)]
 
-    hout = k32.GetStdHandle(-11)                    # STD_OUTPUT_HANDLE
+    hout = k32.GetStdHandle(-11)
     k32.GetLargestConsoleWindowSize.restype = _COORD
-    maxs = k32.GetLargestConsoleWindowSize(hout)    # taille max qui tient à l'écran
-    cols = min(max(maxs.X - 1, 10), 400) if maxs.X > 10 else 200   # borné (évite valeurs folles)
-    lines = min(max(maxs.Y - 1, 5), 160) if maxs.Y > 5 else 52
-    # on AGRANDIT : buffer d'abord (>= fenêtre actuelle, donc sûr), puis la fenêtre.
-    # (Pas d'étape « fenêtre minuscule » : si un appel échouait, on resterait coincé.)
+    maxs = k32.GetLargestConsoleWindowSize(hout)
+    if maxs.X < 10 or maxs.Y < 5:                    # valeurs douteuses → on ne touche à rien
+        return
+    cols = min(maxs.X - 1, 400)
+    lines = min(maxs.Y - 1, 160)
     k32.SetConsoleScreenBufferSize(hout, _COORD(cols, lines))
     k32.SetConsoleWindowInfo(hout, True, ctypes.byref(_RECT(0, 0, cols - 1, lines - 1)))
     hwnd = k32.GetConsoleWindow()
     if hwnd:
-        u32.ShowWindow(hwnd, 3)                     # SW_MAXIMIZE (remplit l'écran)
+        u32.ShowWindow(hwnd, 3)                      # SW_MAXIMIZE
 
 
 def agrandir_fenetre():
-    """Ouvre le tool EN GRAND au lancement (plus de place = œil plus grand).
-    Best-effort, silencieux si ça échoue (on ne casse jamais le démarrage) :
-      · Windows conhost : buffer + fenêtre à la taille max de l'écran ;
-      · Windows Terminal / xterm / VS Code… : séquence \x1b[9;1t (maximise)."""
-    if os.name == "nt":
+    """Agrandit la fenêtre SANS JAMAIS casser l'affichage, puis le programme
+    S'ADAPTE à la taille qu'il obtient (il remplit l'espace disponible, sur
+    n'importe quel écran). On ne force la taille QUE sur une console conhost nue ;
+    sur Windows Terminal / VS Code / autres, on demande juste la maximisation
+    (inoffensive) et on s'adapte — pour remplir, il suffit de maximiser la fenêtre."""
+    if _conhost_classique():                        # conhost nu → remplissage sûr
         try:
-            _agrandir_windows()
+            _agrandir_conhost()
+        except Exception:
+            pass
+    elif os.name == "nt":                           # WT & co : maximisation douce, sans buffer
+        try:
+            import ctypes
+            h = ctypes.windll.kernel32.GetConsoleWindow()
+            if h:
+                ctypes.windll.user32.ShowWindow(h, 3)
         except Exception:
             pass
     try:
-        _ecrire("\x1b[9;1t")                   # maximise (terminaux type xterm / WT)
-        time.sleep(0.05)                        # laisse la fenêtre s'ajuster
+        _ecrire("\x1b[9;1t")                         # maximise (WT / xterm), ignoré ailleurs
+        time.sleep(0.12)                            # laisse la fenêtre s'ajuster avant de lire la taille
     except Exception:
         pass
 
@@ -1207,6 +1229,14 @@ def _oeil_attente(W, H, slogan, kb):
     invite_on = True
     besoin = True                                    # redessiner ce tour ?
     while True:
+        d = _dim()                                   # la fenêtre a-t-elle changé de taille ?
+        Wn = max(min(d[0] - 1, 400), 40)
+        Hn = max(min(d[1] - 1, 160), 16)
+        if (Wn, Hn) != (W, H):                       # oui → on se ré-adapte (pas de bouillie)
+            W, H = Wn, Hn
+            _ecrire(BASE + "\x1b[2J\x1b[H")
+            _reinit_cadre()
+            besoin = True
         ouv = 1.0
         bf = f - prochain_clin
         if 0 <= bf < len(clin):                      # clignement en cours

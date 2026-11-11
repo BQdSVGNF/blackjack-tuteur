@@ -49,9 +49,9 @@ rem Télécharge le modèle la première fois (environ 4,9 Go)
 echo Préparation de la table Black Jack...
 ollama list | find /i "%BASE%" >nul || ollama pull %BASE%
 
-rem Plancher de taille (sans risque de barre de defilement) ; le programme
-rem agrandit ensuite la console a la taille reelle de l'ecran.
-mode con: cols=140 lines=40 >nul 2>nul
+rem Astuce : pour remplir l'ecran, maximise la fenetre (le tool s'adapte tout seul
+rem a la taille, quel que soit l'ecran). Sur une console classique, il la remplit
+rem automatiquement ; sur Windows Terminal, maximise-la (ou regle-la en "maximized").
 
 cls
 python ia.py
