@@ -439,6 +439,19 @@ class _Clavier:
             except Exception:
                 pass
 
+    def vider(self):
+        """Jette les touches déjà tapées (évite qu'un double appui saute une étape)."""
+        if not self.ok:
+            return
+        try:
+            if self.nt:
+                while self.msvcrt.kbhit():
+                    self.msvcrt.getwch()
+            else:
+                self.termios.tcflush(self.fd, self.termios.TCIFLUSH)
+        except Exception:
+            pass
+
     def get(self):
         if not self.ok:
             return None
@@ -1405,19 +1418,70 @@ def saisie_menu():
         _montrer_curseur()
 
 
-def debut_conversation(sous_titre=""):
-    """Quitte le menu animé pour un écran propre (conversation IA / sortie)."""
+def ligne_entete(gauche, droite=""):
+    """La barre du haut (texte brut à gauche et à droite), sans retour à la ligne."""
+    W = max(min(largeur(), 400) - 1, 20)          # 1 colonne de moins : pas de retour auto en fin de ligne
+    plein = max(W - len(gauche) - len(droite), 1)
+    return BAR_BG + _txt(205, 215, 235) + (gauche + " " * plein + droite)[:W] + BASE
+
+
+def debut_conversation(sous_titre="", droite="« menu » pour revenir  "):
+    """Quitte le menu animé pour un écran propre (conversation IA / jeu / sortie)."""
     global sur_menu
     sur_menu = False
     _montrer_curseur()
     _ecrire(BASE + "\x1b[2J\x1b[H")
     W = min(largeur(), 400)
     gauche = "  ◢ BLACK JACK ◣" + (f"   ·   {sous_titre}" if sous_titre else "")
-    droite = "« menu » pour revenir  "
-    plein = max(W - _long_visible(gauche) - len(droite), 1)
-    barre = gauche + " " * plein + droite
-    _ecrire(BAR_BG + _txt(205, 215, 235) + barre[:W] + BASE + "\n")
+    _ecrire(ligne_entete(gauche, droite) + "\n")
     _ecrire(DISCRET + "  " + "─" * min(W - 4, 100) + BASE + "\n")
+
+
+def dessiner(lignes):
+    """Redessine tout l'écran sur place (sans effacer d'abord : pas de scintillement)."""
+    _ecrire("\x1b[H" + "".join(BASE + l + "\x1b[K\n" for l in lignes) + "\x1b[J")
+
+
+def vider_clavier():
+    """Jette les touches en attente (à appeler avant une question au clavier)."""
+    with _Clavier() as kb:
+        kb.vider()
+
+
+def lire_touche(valides=None):
+    """Attend UNE touche, sans appuyer sur Entrée.
+
+    valides : ensemble de jetons acceptés — des caractères en minuscules ('h') et/ou
+    les noms 'enter' / 'esc'. None = n'importe quelle touche. Renvoie le jeton.
+    Repli si le terminal n'a pas de lecture brute : on lit une ligne avec input()."""
+    attendus = set(valides) if valides else None
+    with _Clavier() as kb:
+        if kb.ok:
+            kb.vider()
+            while True:
+                for ev in kb.evenements():
+                    quoi = ev[0]
+                    if quoi == "ctrl-c":
+                        raise KeyboardInterrupt
+                    if quoi in ("enter", "esc"):
+                        jeton = quoi
+                    elif quoi == "char":
+                        jeton = ev[1].lower()
+                    else:
+                        continue
+                    if attendus is None or jeton in attendus:
+                        return jeton
+                time.sleep(0.02)
+    while True:                                   # repli : pas de clavier brut
+        s = input().strip().lower()
+        jeton = s[:1] if s else "enter"
+        if attendus is None or jeton in attendus:
+            return jeton
+
+
+def attendre_touche(message="Appuie sur une touche pour revenir au menu"):
+    _ecrire("\n  " + DISCRET + "╾  " + message + "  ╼" + BASE)
+    return lire_touche()
 
 def _ligne_ansi(rangee):
     """Rend une ligne de cellules (char, fg, bg) en une chaîne ANSI."""
@@ -1553,52 +1617,50 @@ def _contenu_reseau(inner):
 
 
 # ---------- Table de stratégie Black Jack (option 5) ----------
-# Colonnes = carte visible du croupier : 2 3 4 5 6 7 8 9 10 A
-# S=rester (stand) · H=tirer (hit) · D=doubler · P=séparer
-_STRAT_DUR = [("8", "HHHHHHHHHH"), ("9", "HDDDDHHHHH"), ("10", "DDDDDDDDHH"),
-              ("11", "DDDDDDDDDH"), ("12", "HHSSSHHHHH"), ("13", "SSSSSHHHHH"),
-              ("14", "SSSSSHHHHH"), ("15", "SSSSSHHHHH"), ("16", "SSSSSHHHHH"),
-              ("17+", "SSSSSSSSSS")]
-_STRAT_SOUPLE = [("A,2", "HHHDDHHHHH"), ("A,3", "HHHDDHHHHH"), ("A,4", "HHDDDHHHHH"),
-                 ("A,5", "HHDDDHHHHH"), ("A,6", "HDDDDHHHHH"), ("A,7", "SDDDDSSHHH"),
-                 ("A,8", "SSSSSSSSSS"), ("A,9", "SSSSSSSSSS")]
-_STRAT_PAIRES = [("2-2", "PPPPPPHHHH"), ("3-3", "PPPPPPHHHH"), ("4-4", "HHHPPHHHHH"),
-                 ("5-5", "DDDDDDDDHH"), ("6-6", "PPPPPHHHHH"), ("7-7", "PPPPPPHHHH"),
-                 ("8-8", "PPPPPPPPPP"), ("9-9", "PPPPPSPPSS"), ("T-T", "SSSSSSSSSS"),
-                 ("A-A", "PPPPPPPPPP")]
+# Les données (tables S/H/D/P) vivent dans strategie.py, partagées avec le jeu et le quiz.
 _STRAT_COUL = {"S": _txt(90, 230, 140), "H": _txt(150, 160, 175),
                "D": _txt(240, 185, 80), "P": _txt(95, 200, 245)}
 
 
 def montrer_strategie():
-    """Affiche la table de stratégie de base du Black Jack (écran dédié)."""
-    debut_conversation("STRATÉGIE DE BASE · 21")
-    ENT = _txt(120, 210, 235)
+    """Table de stratégie de base : les 3 tableaux côte à côte si la fenêtre est large,
+    sinon les uns sous les autres."""
+    import strategie as st
+    debut_conversation("STRATÉGIE DE BASE · 21", droite="")
 
-    def entete():
-        s = "        " + "".join(f"{c:>4}" for c in
-                                 ["2", "3", "4", "5", "6", "7", "8", "9", "10", "A"])
-        _ecrire("\n  " + ENT + GRAS + "            carte du croupier" + BASE + "\n")
-        _ecrire("  " + DISCRET + s + BASE + "\n")
-
-    def bloc(titre, lignes):
-        _ecrire("\n  " + OR + GRAS + "▸ " + titre + BASE + "\n")
+    def lignes_bloc(titre, lignes, larg):
+        out = [OR + GRAS + "▸ " + titre + BASE,
+               DISCRET + " " * 7 + "".join(f"{c:>{larg}}" for c in st.COLONNES) + BASE]
         for nom, codes in lignes:
-            ligne = [BASE + "  " + _txt(205, 212, 225) + f"{nom:>5}  "]
-            for code in codes:
-                ligne.append(_STRAT_COUL.get(code, TEXTE) + f"{code:>4}")
-            _ecrire("".join(ligne) + BASE + "\n")
+            out.append(_txt(205, 212, 225) + f"{nom:>5}  "
+                       + "".join(_STRAT_COUL.get(c, TEXTE) + f"{c:>{larg}}" for c in codes) + BASE)
+        return out
 
-    entete()
-    bloc("MAINS DURES (total)", _STRAT_DUR)
-    bloc("MAINS SOUPLES (As + carte)", _STRAT_SOUPLE)
-    bloc("PAIRES (séparer ?)", _STRAT_PAIRES)
-    _ecrire("\n  " + _STRAT_COUL["S"] + "S" + DISCRET + " rester   "
-            + _STRAT_COUL["H"] + "H" + DISCRET + " tirer   "
-            + _STRAT_COUL["D"] + "D" + DISCRET + " doubler   "
+    blocs = [("MAINS DURES", st.DUR), ("MAINS SOUPLES (As + carte)", st.SOUPLE),
+             ("PAIRES", st.PAIRES)]
+    _ecrire("\n  " + _txt(120, 210, 235) + "Colonnes : carte visible du croupier  "
+            + "(2 3 4 5 6 7 8 9 10 A)" + BASE + "\n\n")
+    larg_bloc = 7 + 10 * 3
+    if largeur() >= 3 * larg_bloc + 2 * 4 + 4:                      # côte à côte (cellules de 3)
+        cols = [lignes_bloc(t, l, 3) for t, l in blocs]
+        haut = max(len(c) for c in cols)
+        for i in range(haut):
+            morceaux = []
+            for c in cols:
+                cell = c[i] if i < len(c) else ""
+                morceaux.append(cell + " " * max(larg_bloc - _long_visible(cell), 0))
+            _ecrire("  " + "    ".join(morceaux) + BASE + "\n")
+    else:                                                          # empilé (cellules de 4)
+        for t, l in blocs:
+            for ligne in lignes_bloc(t, l, 4):
+                _ecrire("  " + ligne + "\n")
+            _ecrire("\n")
+    _ecrire("\n  " + _STRAT_COUL["S"] + "S" + DISCRET + " rester    "
+            + _STRAT_COUL["H"] + "H" + DISCRET + " tirer    "
+            + _STRAT_COUL["D"] + "D" + DISCRET + " doubler    "
             + _STRAT_COUL["P"] + "P" + DISCRET + " séparer" + BASE + "\n")
-    _ecrire("\n  " + DISCRET + "(base : croupier reste à 17, plusieurs jeux)  ·  "
-            + "« menu » pour revenir" + BASE + "\n")
+    _ecrire("  " + DISCRET + "6 jeux · le croupier reste sur 17 · double après séparation autorisé"
+            + BASE + "\n")
 
 
 def _composer_menu(modele):
@@ -1625,8 +1687,9 @@ def _composer_menu(modele):
         ("♠ TABLE · L'IA", [("1", "Discuter (tape ton message)"), ("2", "Recherche web sourcée"),
                             ("3", "CODEX · coder (C++, Python…)"),
                             ("4", "Nouvelle partie (reset mémoire)")], C_PIQUE),
-        ("♥ STRATÉGIE · 21", [("5", "Stratégie de base"), ("6", "Apprendre à compter (Hi-Lo)"),
-                              ("7", "Quiz : que faire ?")], C_COEUR),
+        ("♥ BLACK JACK · 21", [("15", "JOUER · partie de Black Jack"), ("5", "Table de stratégie"),
+                               ("6", "Entraîneur Hi-Lo (compter)"),
+                               ("7", "Quiz : que faire ?")], C_COEUR),
         ("♦ SYSTÈME · ma machine", [("8", "Infos système"), ("9", "Espace disque"),
                                     ("10", "Lancer un programme"),
                                     ("14", "Paramètres (IA, Spotify, son…)")], C_CARREAU),

@@ -13,7 +13,9 @@ import sys
 import urllib.error
 import urllib.request
 
+import entrainement
 import interface as ui
+import jeu
 
 # On parle à Ollama par son API HTTP locale (pas de module à installer, donc
 # rien que le « Contrôle intelligent des applications » de Windows puisse bloquer).
@@ -39,6 +41,12 @@ DEFAUTS = {
     "turbo_cle": "",                # clé API (stockée en clair dans parametres.json)
     "turbo_modele": "anthropic/claude-3.5-sonnet",      # ex. via OpenRouter
     "turbo_url": "https://openrouter.ai/api/v1/chat/completions",
+    # --- Table de Black Jack (jeu.py) ---
+    "bankroll": 1000,               # jetons en poche
+    "derniere_mise": 50,
+    "hilo_visible": False,          # afficher le compte Hi-Lo à la table
+    "strat_ok": 0,                  # décisions conformes à la stratégie de base (cumul)
+    "strat_total": 0,
 }
 DENSITES = {"faible": 0.4, "moyenne": 0.8, "forte": 1.0}
 VITESSES = {"lente": 0.6, "normale": 1.0, "rapide": 1.7}
@@ -518,6 +526,24 @@ def main():
         ui.ecran_sortie()                # revient toujours à l'écran normal du terminal
 
 
+def _ecran_dedie(fonction, conf):
+    """Lance un écran dédié (jeu, entraîneurs, table de stratégie), puis revient au menu.
+    Une erreur ou un Ctrl+C ici ne ferme jamais le programme."""
+    try:
+        fonction()
+    except KeyboardInterrupt:
+        pass
+    except Exception as e:
+        ui._montrer_curseur()
+        ui.erreur(f"Erreur : {e}")
+        try:
+            ui.attendre_touche()
+        except KeyboardInterrupt:
+            pass
+    sauver_conf(conf)                    # jetons, stats…
+    ui.afficher_menu(NOM_IA)
+
+
 def _boucle(historique, conf):
     if not ui.ecran_accueil(NOM_IA):     # ÉCHAP sur l'écran d'accueil → on quitte
         return
@@ -541,7 +567,16 @@ def _boucle(historique, conf):
             ecran_parametres(conf)       # redessine le menu en sortant
             continue
         if saisie == "5" or saisie.lower() in ("strategie", "stratégie", "strat"):
-            ui.montrer_strategie()       # table de stratégie de base (écran dédié)
+            _ecran_dedie(lambda: (ui.montrer_strategie(), ui.attendre_touche()), conf)
+            continue
+        if saisie == "15" or saisie.lower() in ("jouer", "jeu", "play", "table"):
+            _ecran_dedie(lambda: jeu.jouer(conf), conf)          # vraie partie de Black Jack
+            continue
+        if saisie == "6" or saisie.lower() in ("hilo", "hi-lo", "compter", "comptage"):
+            _ecran_dedie(entrainement.hilo, conf)                # entraîneur de comptage
+            continue
+        if saisie == "7" or saisie.lower() in ("quiz",):
+            _ecran_dedie(entrainement.quiz, conf)                # quiz « que faire ? »
             continue
         if ui.sur_menu:                  # 1re sortie du menu → écran propre (style conversation)
             est_ia = saisie in ("1", "3") or RACCOURCIS.get(saisie, ("",))[0] == "prompt" \
