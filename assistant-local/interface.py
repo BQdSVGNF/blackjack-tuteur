@@ -91,6 +91,13 @@ FOND_CARTE = _fond(238, 240, 235)
 DOS_CARTE = _fond(120, 20, 40)
 BASE = RESET + FOND + TEXTE        # style « normal »
 
+# Mise à jour SYNCHRONISÉE (DEC mode 2026) : le terminal met en tampon tout ce qui
+# arrive entre DÉBUT et FIN et affiche l'image d'UN SEUL COUP → aucune déchirure
+# (indispensable sur Windows Terminal pour les animations plein écran). Les
+# terminaux qui ne la gèrent pas ignorent simplement ces séquences.
+_SYNC_DEBUT = "\x1b[?2026h"
+_SYNC_FIN = "\x1b[?2026l"
+
 ENSEIGNES = [("♠", NOIR), ("♥", ROUGE), ("♦", ROUGE), ("♣", NOIR)]
 
 
@@ -492,7 +499,7 @@ def _emettre(grille):
     vo, ho = _intro_voffset, _intro_offset
     if _fb_prev is None or len(_fb_prev) != H or (H and len(_fb_prev[0]) != W):
         _fb_prev = [row[:] for row in g]
-        return _rendu_depuis(g, vo, ho)          # plein écran
+        return _SYNC_DEBUT + _rendu_depuis(g, vo, ho) + _SYNC_FIN   # plein écran
     prev = _fb_prev
     out = []
     for y in range(H):
@@ -520,7 +527,7 @@ def _emettre(grille):
             else:
                 x += 1
     _fb_prev = [row[:] for row in g]
-    return ("".join(out) + BASE) if out else ""
+    return (_SYNC_DEBUT + "".join(out) + BASE + _SYNC_FIN) if out else ""
 
 
 CARS_PLUIE = "01010110¦:+*=<>/\\!?#$%&01"
@@ -1434,7 +1441,7 @@ def _dessiner_cartes_centre(grille, W, angle):
         return
     H = len(grille)
     clubs, spades = _as_centre()
-    _poser_carte_spin(grille, W, H, _cartes_cx + 4, _cartes_cy, spades, angle)   # derrière
+    _poser_carte_spin(grille, W, H, _cartes_cx + 3, _cartes_cy, spades, angle)   # derrière
     _poser_carte_spin(grille, W, H, _cartes_cx - 3, _cartes_cy, clubs, angle)    # devant
 
 
@@ -1635,35 +1642,28 @@ def _poser_entete(grille, W, modele):
             row0[mx + i] = [ch, cpt if ch in "●○" else _txt(150, 165, 188), BAR_BG]
 
 
-_menu_prev = None          # dernier cadre du menu émis (cellules finales), pour le diff
-
-
 def _menu_reinit():
-    """Force un repeint complet du menu au prochain appel (après un effacement)."""
-    global _menu_prev
-    _menu_prev = None
+    """(Compat : le menu se repeint entièrement à chaque image — rien à garder.)"""
+    return
 
 
 def _repaint_menu(i_teinte, tetes, f):
-    """Repeint le menu en DIFFÉRENTIEL : pluie + titre teinté + les deux as qui
-    tournent, MAIS on ne réémet QUE les cellules qui changent. Sans effacement de
-    ligne → plus de scintillement ni de déchirure (le problème sur Windows Terminal)."""
-    global _menu_prev
+    """Repeint TOUT le menu (pluie + titre teinté + les deux as qui tournent) à
+    chaque image — donc ça se corrige tout seul (pas d'accumulation d'erreurs),
+    MAIS :
+      · enveloppé dans une MISE À JOUR SYNCHRONISÉE (mode 2026) → le terminal
+        affiche l'image d'un seul coup : AUCUNE déchirure (souci Windows Terminal) ;
+      · SANS effacement de ligne (\\x1b[K) → pas de « flash » des cartes blanches."""
     _animer_cartes_centre(f)                      # fait tourner les as (A♣ + A♠)
     W = len(_grille_menu[0])
     dec = _menu_offset
-    logo = _LOGO_CELLS[i_teinte] if _LOGO_CELLS else None
-    # 1) construit la grille FINALE (menu + pluie + logo teinté + cartes)
-    final = []
+    espaces = " " * dec
+    buf = [_SYNC_DEBUT, "\x1b7"]                   # sync + sauve le curseur (ligne de saisie)
     for ry in range(_menu_bas):
         row = _grille_menu[ry]
-        in_logo = _titre_haut <= ry < _titre_haut + LOGO_ROWS and logo is not None
-        lrow = logo[ry - _titre_haut] if in_logo else None
-        frow = []
+        bout = ["\x1b[%d;1H" % (ry + 1), BASE, espaces]   # position, PAS de \x1b[K
+        cfg = cbg = None
         for x in range(W):
-            if lrow is not None and _titre_marge <= x < _titre_marge + LOGO_COLS:
-                frow.append(lrow[x - _titre_marge])
-                continue
             ch, fg, bg = row[x]
             if ch == " " and fg is None and bg is None and tetes is not None:   # case vide → pluie ?
                 k = int(tetes[x][0]) - ry
@@ -1674,41 +1674,23 @@ def _repaint_menu(i_teinte, tetes, f):
                     else:
                         v = 1 - k / tetes[x][2]
                         dfg = _txt(int(22 + 50 * v), int(60 + 105 * v), int(40 + 65 * v))
-                    frow.append((ch2, dfg, FOND))
+                    dbg = FOND
                 else:
-                    frow.append((" ", TEXTE, FOND))
+                    ch2, dfg, dbg = " ", TEXTE, FOND
             else:
-                frow.append((ch, fg or TEXTE, bg or FOND))
-        final.append(frow)
-    # 2) diff contre le cadre précédent → n'émet que ce qui a changé
-    prev = _menu_prev
-    plein = prev is None or len(prev) != _menu_bas or (W and len(prev[0]) != W)
-    out = ["\x1b7"]                               # sauve le curseur (ligne de saisie)
-    for ry in range(_menu_bas):
-        frow = final[ry]
-        prow = None if plein else prev[ry]
-        if prow is not None and prow == frow:
-            continue
-        x = 0
-        while x < W:
-            if plein or frow[x] != prow[x]:
-                xs = x
-                seg = ["\x1b[%d;%dH" % (ry + 1, xs + dec + 1), BASE]
-                cfg = cbg = None
-                while x < W and (plein or frow[x] != prow[x]):
-                    ch, fg, bg = frow[x]
-                    if fg != cfg:
-                        seg.append(fg); cfg = fg
-                    if bg != cbg:
-                        seg.append(bg); cbg = bg
-                    seg.append(ch)
-                    x += 1
-                out.append("".join(seg))
-            else:
-                x += 1
-    out.append("\x1b8")                           # restaure le curseur
-    _menu_prev = final
-    return "".join(out)
+                ch2, dfg, dbg = ch, (fg or TEXTE), (bg or FOND)
+            if dfg != cfg:
+                bout.append(dfg); cfg = dfg
+            if dbg != cbg:
+                bout.append(dbg); cbg = dbg
+            bout.append(ch2)
+        buf.append("".join(bout))
+        if _titre_haut <= ry < _titre_haut + LOGO_ROWS and _LOGO_TEINTES:   # logo teinté par-dessus
+            ligne = _LOGO_TEINTES[i_teinte][ry - _titre_haut]
+            buf.append("\x1b[%d;%dH" % (ry + 1, 1 + dec + _titre_marge) + BASE + ligne)
+    buf.append("\x1b8")                            # restaure le curseur
+    buf.append(_SYNC_FIN)
+    return "".join(buf)
 
 
 class _Pulsation(threading.Thread):
@@ -2183,8 +2165,8 @@ def _composer_menu(modele):
         bas_boites = r2 + max(len(boites[2]), len(boites[3])) - 1
         _cartes_cx = marge + LARGEUR_BOITE + gap // 2
         _cartes_cy = (r1 + bas_boites) // 2
-        _cartes_x0 = marge + LARGEUR_BOITE + 1
-        _cartes_x1 = col_d - 2
+        _cartes_x0 = marge + LARGEUR_BOITE + 1        # zone large (couvre toute l'étendue
+        _cartes_x1 = col_d - 1                        # des cartes, épaisseur comprise)
         _cartes_r0 = max(_cartes_cy - _HAUT_CARTE // 2 - 1, r1)
         _cartes_r1 = min(_cartes_cy + _HAUT_CARTE // 2 + 1, bas_boites)
         for ry in range(_cartes_r0, _cartes_r1 + 1):  # réserve la zone (fond sombre, pas de pluie)
