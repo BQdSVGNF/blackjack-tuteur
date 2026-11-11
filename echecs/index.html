@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Échecs — Bots 3200+ ou à deux</title>
+<link rel="icon" href="pieces/wn.svg">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="fileWarn" class="file-warn" hidden>
+  Ce jeu doit être ouvert via un serveur web (le moteur Stockfish ne peut pas se charger depuis <code>file://</code>).<br>
+  Dans le dossier <code>echecs</code>, lancez <code>python3 -m http.server 8000</code> puis ouvrez <code>http://localhost:8000</code>.
+</div>
+<script>if (location.protocol === 'file:') document.getElementById('fileWarn').hidden = false;</script>
+
+<main class="app">
+  <section class="table">
+    <div class="player" id="playerTop"></div>
+    <div class="board-frame">
+      <div id="board" class="board">
+        <div class="squares" id="squares"></div>
+        <div class="pieces" id="pieces"></div>
+        <div class="promo" id="promo" hidden></div>
+        <div class="end-card" id="endCard" hidden>
+          <div class="end-title" id="endTitle"></div>
+          <div class="end-reason" id="endReason"></div>
+          <div class="end-actions">
+            <button class="btn primary" id="btnRematch">Revanche</button>
+            <button class="btn" id="btnEndNew">Nouvelle partie</button>
+            <button class="btn ghost" id="btnEndClose">Voir l'échiquier</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="player" id="playerBottom"></div>
+  </section>
+
+  <aside class="panel">
+    <header class="panel-head">
+      <h1>♞ Échecs</h1>
+      <div class="status" id="status"></div>
+    </header>
+    <div class="moves" id="moves"></div>
+    <div class="nav">
+      <button class="btn icon" id="navFirst" title="Début">⏮</button>
+      <button class="btn icon" id="navPrev" title="Coup précédent (←)">◀</button>
+      <button class="btn icon" id="navNext" title="Coup suivant (→)">▶</button>
+      <button class="btn icon" id="navLast" title="Position actuelle">⏭</button>
+    </div>
+    <div class="actions">
+      <button class="btn" id="btnUndo">↩ Annuler</button>
+      <button class="btn" id="btnHint">💡 Indice</button>
+      <button class="btn" id="btnFlip">⇅ Retourner</button>
+      <button class="btn" id="btnSound">🔊 Son</button>
+      <button class="btn" id="btnPgn">📋 Copier PGN</button>
+      <button class="btn danger" id="btnResign">🏳 Abandonner</button>
+    </div>
+    <button class="btn primary wide" id="btnNew">Nouvelle partie</button>
+    <p class="credits">Moteur : Stockfish 17.1 (GPLv3) · Règles : chess.js · Pièces : Colin M.L. Burnett</p>
+  </aside>
+</main>
+
+<div class="overlay" id="setup">
+  <div class="dialog">
+    <h2>Nouvelle partie</h2>
+    <div class="seg" id="segMode">
+      <button data-v="bot">🤖 Contre un bot</button>
+      <button data-v="friend">👥 Avec un ami</button>
+    </div>
+
+    <div id="botSection">
+      <h3>Adversaire</h3>
+      <div class="bots" id="bots"></div>
+      <h3>Votre couleur</h3>
+      <div class="seg" id="segColor">
+        <button data-v="w">♔ Blancs</button>
+        <button data-v="r">🎲 Aléatoire</button>
+        <button data-v="b">♚ Noirs</button>
+      </div>
+    </div>
+    <div id="friendSection" hidden>
+      <label class="check"><input type="checkbox" id="autoFlip"> Retourner l'échiquier après chaque coup</label>
+    </div>
+
+    <h3>Cadence</h3>
+    <div class="seg wrap" id="segTc"></div>
+
+    <div class="dialog-actions">
+      <button class="btn ghost" id="btnCancel">Annuler</button>
+      <button class="btn primary" id="btnStart">Jouer</button>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast" hidden></div>
+<script type="module" src="app.js"></script>
+</body>
+</html>
