@@ -290,25 +290,63 @@ def ecran_demarrage():
             ui.attendre_touche()
 
 
+def rapport_diagnostic():
+    """Lance l'outil de diagnostic INTÉGRÉ à Windows : « perfmon /report ».
+    Il analyse le PC environ 60 s (processeur, mémoire, disque, pilotes,
+    programmes au démarrage) puis affiche un rapport complet dans sa fenêtre.
+    Rien à télécharger, rien d'externe : c'est un composant de Windows."""
+    ui.effacer()
+    ui.info("\n  ♦ RAPPORT DE DIAGNOSTIC — outil intégré de Windows\n", ui.CYAN)
+    if os.name != "nt":
+        ui.info("  Disponible uniquement sous Windows.", ui.OR)
+        ui.attendre_touche()
+        return
+    ui.info("  Windows va ouvrir une fenêtre et analyser ton PC pendant ~60 secondes :", ui.TEXTE)
+    ui.info("  processeur, mémoire, disque, pilotes, programmes au démarrage.", ui.DISCRET)
+    ui.info("  Puis il affiche un rapport complet. Rien à télécharger : c'est déjà dans Windows.", ui.DISCRET)
+    ui.info(f"\n  {ui.DISCRET}Commande utilisée : {ui.TEXTE}perfmon /report{ui.BASE}")
+    ui._ecrire("\n  " + ui.OR + "Lancer l'analyse ? [o/n] " + ui.BLANC)
+    rep = ui.lire_touche({"o", "n"})
+    ui._ecrire(rep + "\n")
+    if rep != "o":
+        ui.info("  Annulé.", ui.DISCRET)
+        ui.attendre_touche()
+        return
+    try:
+        import subprocess
+        subprocess.Popen(["perfmon", "/report"])        # outil Windows (System32), s'ouvre et analyse tout seul
+        ui.info("\n  ✓ Fenêtre ouverte. Laisse l'analyse se faire (~60 s) :", ui.VERT)
+        ui.info("    le rapport s'affichera tout seul quand c'est prêt.", ui.DISCRET)
+        ui.info("    (Si rien n'apparaît, cherche « Moniteur de ressources » / « Analyseur de performances ».)", ui.DISCRET)
+    except FileNotFoundError:
+        ui.erreur("perfmon introuvable. Essaie : touche Windows, tape « perfmon /report », Entrée.")
+    except Exception as e:
+        ui.erreur(f"Impossible de lancer l'outil : {e}")
+    ui.attendre_touche()
+
+
 def menu(conf):
     """Menu de l'optimisation. conf n'est pas modifié (rien ici n'a de réglage
     à mémoriser) mais est reçu pour rester cohérent avec les autres écrans."""
     while True:
         ui.effacer()
-        ui.info("\n  ⚙  OPTIMISATION — nettoyage, démarrage\n", ui.CYAN)
-        ui.info(f"   {ui.OR}[1]{ui.TEXTE} Analyser le disque (fichiers temporaires)")
-        ui.info(f"   {ui.OR}[2]{ui.TEXTE} Nettoyer les fichiers temporaires")
-        ui.info(f"   {ui.OR}[3]{ui.TEXTE} Vider la corbeille")
-        ui.info(f"   {ui.OR}[4]{ui.TEXTE} Programmes au démarrage")
+        ui.info("\n  ⚙  OPTIMISATION — diagnostic, nettoyage, démarrage\n", ui.CYAN)
+        ui.info(f"   {ui.OR}[1]{ui.TEXTE} Rapport de diagnostic complet {ui.DISCRET}(outil Windows, 0 téléchargement){ui.BASE}")
+        ui.info(f"   {ui.OR}[2]{ui.TEXTE} Analyser le disque (fichiers temporaires)")
+        ui.info(f"   {ui.OR}[3]{ui.TEXTE} Nettoyer les fichiers temporaires")
+        ui.info(f"   {ui.OR}[4]{ui.TEXTE} Vider la corbeille")
+        ui.info(f"   {ui.OR}[5]{ui.TEXTE} Programmes au démarrage")
         ui.info(f"   {ui.OR}[0]{ui.TEXTE} Revenir au menu")
         choix = ui.demander_texte("Ton choix").strip()
         if choix in ("0", "", "retour", "exit"):
             return
         elif choix == "1":
-            ecran_disque()
+            rapport_diagnostic()
         elif choix == "2":
-            nettoyer_temp()
+            ecran_disque()
         elif choix == "3":
-            vider_corbeille()
+            nettoyer_temp()
         elif choix == "4":
+            vider_corbeille()
+        elif choix == "5":
             ecran_demarrage()
