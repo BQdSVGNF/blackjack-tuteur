@@ -1735,7 +1735,8 @@ def _composer_menu(modele):
         ("♦ SYSTÈME · ma machine", [("8", "Infos système"), ("9", "Espace disque"),
                                     ("10", "Lancer un programme"),
                                     ("14", "Paramètres (IA, Spotify, son…)"),
-                                    ("17", "Optimisation (nettoyage)")], C_CARREAU),
+                                    ("17", "Optimisation (nettoyage)"),
+                                    ("18", "Coffre (chiffrer mes fichiers)")], C_CARREAU),
         ("♣ RÉSEAU · ma connexion", [("11", "Mon adresse IP"), ("12", "Tester ma connexion (ping)"),
                                      ("13", "Mes connexions actives")], C_TREFLE),
     ]

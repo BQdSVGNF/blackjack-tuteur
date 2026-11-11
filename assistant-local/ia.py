@@ -16,6 +16,7 @@ import urllib.request
 import entrainement
 import interface as ui
 import jeu
+import coffre
 import optimisation
 
 # On parle à Ollama par son API HTTP locale (pas de module à installer, donc
@@ -607,6 +608,9 @@ def _boucle(historique, conf):
             continue
         if saisie == "17" or saisie.lower() in ("optimisation", "optimiser"):
             _ecran_dedie(lambda: optimisation.menu(conf), conf)  # nettoyage, démarrage
+            continue
+        if saisie == "18" or saisie.lower() in ("coffre", "chiffrer"):
+            _ecran_dedie(lambda: coffre.menu(conf), conf)        # chiffrer/déchiffrer tes fichiers
             continue
         if ui.sur_menu:                  # 1re sortie du menu → écran propre (style conversation)
             est_ia = saisie in ("1", "3") or RACCOURCIS.get(saisie, ("",))[0] == "prompt" \
