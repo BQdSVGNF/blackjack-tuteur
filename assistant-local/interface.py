@@ -959,18 +959,31 @@ _SPADE_ART = [
     "     ███     ",
     "   ▄▄███▄▄   ",
 ]
+_CLUB_ART = [
+    "    ▄███▄    ",
+    "   ███████   ",
+    "▄█▄ █████ ▄█▄",
+    "███▄█████▄███",
+    "█████████████",
+    "▀▀▀█▀███▀█▀▀▀",
+    "     ███     ",
+    "   ▄▄███▄▄   ",
+]
+_ART_ENSEIGNE = {"♠": _SPADE_ART, "♣": _CLUB_ART}
 _LARG_CARTE, _HAUT_CARTE = 15, 14          # colonnes × lignes
 
 
-def _carte_as(kind):
+def _carte_as(kind, enseigne="♠"):
     """Construit un as (faces avant/arrière) en cellules (char, fg, bg).
-    kind 'clair' = carte blanche/encre noire · 'sombre' = carte noire/encre claire."""
+    kind 'clair' = carte blanche/encre noire · 'sombre' = l'inverse.
+    enseigne : ♠ ou ♣ (dessin central + coins)."""
     if kind == "clair":
-        BG, INK, ED = (228, 232, 238), (24, 26, 34), (64, 68, 80)
+        BG, INK, ED = (232, 235, 240), (22, 24, 32), (70, 74, 86)
     else:
         BG, INK, ED = (17, 19, 26), (223, 229, 239), (150, 158, 172)
     bg, ink, ed = _fond(*BG), _txt(*INK), _txt(*ED)
     inner = _LARG_CARTE - 2
+    art = _ART_ENSEIGNE.get(enseigne, _SPADE_ART)
 
     def cell_row(s):
         s = (s + " " * inner)[:inner]
@@ -979,68 +992,86 @@ def _carte_as(kind):
     def bord(g, d):
         return [(g, ed, bg)] + [("─", ed, bg)] * inner + [(d, ed, bg)]
 
-    # --- FACE : coins A♠ + grand pique au centre ---
+    # --- FACE : coins A + grande enseigne au centre ---
     front = [bord("╭", "╮")]
     front.append([("│", ed, bg)] + cell_row("A") + [("│", ed, bg)])
-    front.append([("│", ed, bg)] + cell_row("♠") + [("│", ed, bg)])
-    for ligne in _SPADE_ART:
+    front.append([("│", ed, bg)] + cell_row(enseigne) + [("│", ed, bg)])
+    for ligne in art:
         front.append([("│", ed, bg)] + cell_row(ligne) + [("│", ed, bg)])
-    front.append([("│", ed, bg)] + cell_row("           ♠") + [("│", ed, bg)])
-    front.append([("│", ed, bg)] + cell_row("           A") + [("│", ed, bg)])
+    front.append([("│", ed, bg)] + cell_row("          " + enseigne) + [("│", ed, bg)])
+    front.append([("│", ed, bg)] + cell_row("          A") + [("│", ed, bg)])
     front.append(bord("╰", "╯"))
 
-    # --- DOS : treillis + petit pique central ---
+    # --- DOS : treillis + petite enseigne centrale ---
     dos = [bord("╭", "╮")]
     motif = "▞▚" * ((inner // 2) + 1)
     for r in range(_HAUT_CARTE - 2):
         cells = [(motif[(r + i) % len(motif)], ed, bg) for i in range(inner)]
         dos.append([("│", ed, bg)] + cells + [("│", ed, bg)])
     mid = (_HAUT_CARTE - 2) // 2
-    dos[mid][1 + inner // 2] = ("♠", ink, bg)
+    dos[mid][1 + inner // 2] = (enseigne, ink, bg)
     dos.append(bord("╰", "╯"))
     return {"front": front, "back": dos, "w": _LARG_CARTE, "h": _HAUT_CARTE}
 
 
 _AS_CLAIR = None
 _AS_SOMBRE = None
+_AS_CENTRE = None
 
 
 def _as_caches():
+    """Les deux as de l'accueil : clair (white hat) ♠ + sombre (black hat) ♠."""
     global _AS_CLAIR, _AS_SOMBRE
     if _AS_CLAIR is None:
-        _AS_CLAIR = _carte_as("clair")
-        _AS_SOMBRE = _carte_as("sombre")
+        _AS_CLAIR = _carte_as("clair", "♠")
+        _AS_SOMBRE = _carte_as("sombre", "♠")
     return _AS_CLAIR, _AS_SOMBRE
 
 
-def _poser_carte_spin(grille, W, H, ccx, ccy, carte, angle):
-    """Pose la carte centrée en (ccx, ccy), tournée de `angle` (axe vertical)."""
+def _as_centre():
+    """Les deux as blancs du MENU, comme la photo : A♣ (devant) + A♠ (derrière)."""
+    global _AS_CENTRE
+    if _AS_CENTRE is None:
+        _AS_CENTRE = (_carte_as("clair", "♣"), _carte_as("clair", "♠"))
+    return _AS_CENTRE
+
+
+def _poser_carte_spin(grille, W, H, ccx, ccy, carte, angle, epais=3):
+    """Pose la carte centrée en (ccx, ccy), tournée de `angle` autour de l'axe
+    vertical. La carte a une ÉPAISSEUR (tranche claire visible de profil) : elle
+    ne se réduit JAMAIS à un simple trait (« pas perpendiculaire »)."""
     c = math.cos(angle)
+    s = math.sin(angle)
     face = carte["front"] if c >= 0 else carte["back"]
     Wc, Hc = carte["w"], carte["h"]
-    w = max(1, int(round(Wc * abs(c))))
-    x0 = ccx - w // 2
+    wf = int(round(Wc * abs(c)))                 # largeur de la face (0 de profil)
+    we = int(round(epais * abs(s))) if epais else 0   # largeur de la tranche (max de profil)
+    total = max(wf + we, 1)
     y0 = ccy - Hc // 2
+    x0 = ccx - total // 2
+    edge_right = (s >= 0)                        # tranche du côté fuyant
+    tr_pl = ("█", _txt(214, 218, 226), _fond(150, 154, 164))   # tranche (corps)
+    tr_hb = ("▀", _txt(96, 100, 112), _fond(150, 154, 164))    # tranche (haut/bas)
     for ry in range(Hc):
         gy = y0 + ry
         if not (0 <= gy < H):
             continue
         srow = face[ry]
         rowg = grille[gy]
-        for j in range(w):
-            sx = (Wc - 1 - int(j / w * Wc)) if c < 0 else int(j / w * Wc)   # dos = miroir
-            if sx < 0:
-                sx = 0
-            elif sx >= Wc:
-                sx = Wc - 1
-            gx = x0 + j
-            if 0 <= gx < W:
+        bord_hb = (ry == 0 or ry == Hc - 1)
+        for k in range(total):
+            gx = x0 + k
+            if not (0 <= gx < W):
+                continue
+            in_edge = (k >= wf) if edge_right else (k < we)
+            if (in_edge and we > 0) or wf == 0:
+                rowg[gx] = tr_hb if bord_hb else tr_pl
+            else:
+                jf = k if edge_right else (k - we)
+                denom = wf if wf > 0 else 1
+                sx = (Wc - 1 - int(jf / denom * Wc)) if c < 0 else int(jf / denom * Wc)
+                sx = min(max(sx, 0), Wc - 1)
                 rowg[gx] = srow[sx]
-    if w <= 2:                                   # presque de profil → tranche lumineuse
-        for ry in range(1, Hc - 1):
-            gy, gx = y0 + ry, ccx
-            if 0 <= gy < H and 0 <= gx < W:
-                grille[gy][gx] = ("▌", _txt(206, 212, 224), _fond(150, 156, 168))
 
 
 def _poser_as_coins(grille, W, H, ang_g=0.0, ang_d=0.0):
@@ -1380,6 +1411,38 @@ _taille_menu = None        # taille du terminal au moment de composer le menu
 _modele_menu = ""          # nom affiché, pour recomposer après un redimensionnement
 _menu_offset = 0           # marge gauche pour centrer le menu dans la fenêtre
 
+# --- Les deux as qui tournent au centre du menu (A♣ + A♠, comme la photo) ---
+_cartes_actif = False
+_cartes_cx = _cartes_cy = 0            # centre du couloir des cartes (grille menu)
+_cartes_r0 = _cartes_r1 = 0            # bornes verticales de la zone réservée
+_cartes_x0 = _cartes_x1 = 0            # bornes horizontales de la zone réservée
+_VIT_CARTES = 0.13                     # vitesse de rotation (rad / image ≈ 1 tour / 3,7 s)
+
+
+def _dessiner_cartes_centre(grille, W, angle):
+    """Pose la paire d'as (A♠ derrière-droite, A♣ devant-gauche) tournés de `angle`."""
+    if not _cartes_actif:
+        return
+    H = len(grille)
+    clubs, spades = _as_centre()
+    _poser_carte_spin(grille, W, H, _cartes_cx + 4, _cartes_cy, spades, angle)   # derrière
+    _poser_carte_spin(grille, W, H, _cartes_cx - 3, _cartes_cy, clubs, angle)    # devant
+
+
+def _animer_cartes_centre(f):
+    """Efface la zone des cartes dans la grille du menu et y redessine la paire
+    tournée selon l'image f : appelé à chaque repeint → rotation permanente."""
+    if not (_cartes_actif and _grille_menu):
+        return
+    W = len(_grille_menu[0])
+    for ry in range(_cartes_r0, _cartes_r1 + 1):     # efface (fond sombre, pas de pluie)
+        if 0 <= ry < len(_grille_menu):
+            row = _grille_menu[ry]
+            for cx in range(_cartes_x0, _cartes_x1 + 1):
+                if 0 <= cx < W:
+                    row[cx] = [" ", "", None]
+    _dessiner_cartes_centre(_grille_menu, W, f * _VIT_CARTES)
+
 # --- Console vivante (barre du haut + stats en direct) ---
 _titre_haut = 2            # ligne où commence le logo (après la barre du haut)
 _ligne_horloge = 0         # ligne de l'horloge
@@ -1564,8 +1627,9 @@ def _poser_entete(grille, W, modele):
 
 
 def _repaint_menu(i_teinte, tetes, f):
-    """Repeint les lignes du menu : pluie dans les cases vides + titre teinté,
-    sans toucher la ligne de saisie ni déplacer le curseur."""
+    """Repeint les lignes du menu : pluie dans les cases vides + titre teinté +
+    les deux as qui tournent au centre, sans toucher la ligne de saisie."""
+    _animer_cartes_centre(f)                     # fait tourner les as (A♣ + A♠)
     W = len(_grille_menu[0])
     buf = ["\x1b7"]
     dec = _menu_offset
@@ -1995,13 +2059,19 @@ def _composer_menu(modele):
     """L'écran principal, épuré et centré : barre, logo, signature A♠ J♠,
     les 4 sections du menu, puis l'invite (plus de panneaux latéraux)."""
     global _ligne_horloge, _col_horloge, _ip_cache, _sys_col, _sys_row0, _sys_inner
+    global _cartes_actif, _cartes_cx, _cartes_cy, _cartes_r0, _cartes_r1, _cartes_x0, _cartes_x1
     taille = _Taille()
+    # Les 4 encadrés sont écartés pour laisser un COULOIR CENTRAL où les deux as
+    # (A♣ + A♠) tournent en permanence — si la fenêtre est assez large.
+    _GAP_CARTES = 2 * _LARG_CARTE - 2                  # ~28 colonnes au centre
+    cartes_centre = (taille.columns - 1) >= (2 * LARGEUR_BOITE + _GAP_CARTES + 2)
+    gap = _GAP_CARTES if cartes_centre else 3
     # la pluie remplit toute la largeur ; jamais plus étroit que le logo (sinon
     # sa pose déborderait de la grille sur une fenêtre très étroite)
-    W = max(min(taille.columns - 1, 400), 2 * LARGEUR_BOITE + 3, LOGO_COLS)
+    W = max(min(taille.columns - 1, 400), 2 * LARGEUR_BOITE + gap, LOGO_COLS)
     if not _ip_cache:
         _ip_cache = _ip_locale()
-    centre_w = 2 * LARGEUR_BOITE + 3
+    centre_w = 2 * LARGEUR_BOITE + gap
     marge = max((W - centre_w) // 2, 0)                # menu centré (plus de panneaux latéraux)
     _sys_col = _sys_row0 = -1
     ml = max((W - LOGO_COLS) // 2, 0)
@@ -2056,10 +2126,27 @@ def _composer_menu(modele):
         at(r)
     _poser_signature(lignes, W, base_sig)
     r1 = base_sig + 4                                 # 1ère rangée de panneaux (menu central)
-    poser(r1, marge, boites[0]); poser(r1, marge + LARGEUR_BOITE + 3, boites[1])
+    col_d = marge + LARGEUR_BOITE + gap               # colonne des encadrés de droite
+    poser(r1, marge, boites[0]); poser(r1, col_d, boites[1])
     r2 = r1 + max(len(boites[0]), len(boites[1])) + 1
-    poser(r2, marge, boites[2]); poser(r2, marge + LARGEUR_BOITE + 3, boites[3])
+    poser(r2, marge, boites[2]); poser(r2, col_d, boites[3])
     rh = r2 + max(len(boites[2]), len(boites[3])) + 1
+
+    _cartes_actif = cartes_centre
+    if cartes_centre:                                 # couloir central : les deux as qui tournent
+        bas_boites = r2 + max(len(boites[2]), len(boites[3])) - 1
+        _cartes_cx = marge + LARGEUR_BOITE + gap // 2
+        _cartes_cy = (r1 + bas_boites) // 2
+        _cartes_x0 = marge + LARGEUR_BOITE + 1
+        _cartes_x1 = col_d - 2
+        _cartes_r0 = max(_cartes_cy - _HAUT_CARTE // 2 - 1, r1)
+        _cartes_r1 = min(_cartes_cy + _HAUT_CARTE // 2 + 1, bas_boites)
+        for ry in range(_cartes_r0, _cartes_r1 + 1):  # réserve la zone (fond sombre, pas de pluie)
+            row = at(ry)
+            for cx in range(_cartes_x0, _cartes_x1 + 1):
+                if 0 <= cx < W:
+                    row[cx] = [" ", "", None]
+        _dessiner_cartes_centre(lignes, W, 0.0)       # pose les as au repos (face)
 
     rh += 1
     aide = "╾  tape un numéro · un message pour l'IA · « menu » · « exit »  ╼"
