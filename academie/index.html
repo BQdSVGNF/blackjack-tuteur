@@ -1,0 +1,1269 @@
+<title>Black Jack Académie</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Concept : la salle de contrôle d'un casino de hackers éthiques. Verre fumé vert-noir, texte menthe,
+   cartes pâles qui tournent dans une console. Une seule ambiance sombre, voulue. */
+:root{
+  --bg:#04100e; --panel:#0a211e; --panel-2:#0d2a26;
+  --line:#143f38; --line-2:#1f6f60;
+  --fg:#dcf8ec; --mut:#86b9a9; --dim:#4a7a6d;
+  --acc:#3dffa0; --acc-ink:#03140f; --cy:#52e4ff; --hot:#ff5470; --gold:#f4c752; --org:#ff8a5b;
+  --card:#e6fbf2; --card-ink:#0a1d18;
+  --ok:#3dffa0; --bad:#ff5470;
+  --f-d:'Chakra Petch','Segoe UI',system-ui,sans-serif;
+  --f-b:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  --f-m:'JetBrains Mono',ui-monospace,'Cascadia Code',Consolas,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{
+  margin:0; background-color:var(--bg);
+  background-image:radial-gradient(900px 460px at 85% -8%,rgba(35,170,130,.20),transparent 70%),
+                   radial-gradient(700px 420px at -10% 28%,rgba(20,90,110,.18),transparent 70%);
+  color:var(--fg); font:400 16px/1.55 var(--f-b); -webkit-font-smoothing:antialiased;
+  padding-left:max(16px,env(safe-area-inset-left,0px)); padding-right:max(16px,env(safe-area-inset-right,0px));
+}
+.wrap{max-width:1140px;margin:0 auto;padding-block:20px 56px;display:flex;flex-direction:column;gap:40px}
+.stack{display:flex;flex-direction:column;gap:40px;min-width:0}
+h1,h2,h3{font-family:var(--f-d);margin:0;text-wrap:balance;line-height:1.15}
+p{margin:0}
+a{color:var(--cy)}
+code{font-family:var(--f-m);font-size:.9em;background:rgba(61,255,160,.09);border:1px solid var(--line);padding:1px 6px;border-radius:5px;color:#b9ffe0}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+input[type=radio],input[type=checkbox],input[type=range]{accent-color:var(--acc)}
+.eyebrow{font:600 12px/1 var(--f-m);letter-spacing:.14em;text-transform:uppercase;color:var(--mut)}
+.mut{color:var(--mut)} .mono{font-family:var(--f-m)} .small{font-size:14px}
+.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* barre du haut */
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:10px;font:700 15px var(--f-d);letter-spacing:.14em;text-transform:uppercase}
+.brand b{color:var(--hot);font-size:24px;line-height:1}
+.sync{font:500 12px var(--f-m);color:var(--mut);border:1px solid var(--line);border-radius:99px;padding:5px 11px}
+.sync[data-s="cloud"]{color:var(--acc);border-color:var(--line-2)}
+
+/* hero */
+.hero{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.12fr);gap:26px;align-items:stretch}
+.hero-text{display:flex;flex-direction:column;gap:16px;justify-content:center;min-width:0}
+.hero h1{font-size:clamp(36px,6.2vw,64px);letter-spacing:.005em}
+.hero h1 span{color:var(--acc)}
+.lead{color:var(--mut);max-width:50ch}
+.hud{display:grid;gap:12px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px}
+.hud-row{display:flex;align-items:center;gap:14px}
+.lvl{width:56px;height:68px;border-radius:8px;background:var(--card);color:var(--card-ink);display:grid;place-items:center;font:700 30px var(--f-d);position:relative;flex:none;box-shadow:0 0 0 2px var(--bg),0 0 0 3px var(--line-2)}
+.lvl small{position:absolute;top:4px;left:6px;font:600 9px var(--f-m);letter-spacing:.08em}
+.hud-main{flex:1;min-width:0;display:grid;gap:6px}
+.hud-top{display:flex;justify-content:space-between;gap:8px;align-items:baseline;flex-wrap:wrap}
+.hud-top strong{font:700 19px var(--f-d)}
+.hud-top span{font:500 12px var(--f-m);color:var(--mut)}
+.hud-sub{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;font:500 12px var(--f-m);color:var(--mut)}
+.bar{height:10px;border-radius:99px;background:#0b2b26;border:1px solid var(--line);overflow:hidden}
+.bar i{display:block;height:100%;width:var(--p,0%);background:linear-gradient(90deg,var(--acc),var(--cy));transition:width .5s ease}
+
+.btn{appearance:none;border:0;cursor:pointer;background:var(--acc);color:var(--acc-ink);font:700 15px/1.1 var(--f-d);letter-spacing:.04em;padding:13px 18px;border-radius:9px;transition:filter .15s,transform .15s;text-align:center}
+.btn:hover{filter:brightness(1.1)} .btn:active{transform:translateY(1px)}
+.btn.ghost{background:transparent;color:var(--fg);border:1px solid var(--line-2)}
+.btn.small{padding:9px 13px;font-size:13px}
+.btn[disabled]{opacity:.5;cursor:not-allowed}
+
+/* console : journal + cartes */
+.console{position:relative;overflow:hidden;border:1px solid var(--line-2);border-radius:16px;background:linear-gradient(180deg,#071e1b,#041311);display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);min-height:420px}
+.binary{position:absolute;inset:0;margin:0;color:rgba(61,255,160,.06);font:12px/1.25 var(--f-m);overflow:hidden;white-space:pre;pointer-events:none;user-select:none}
+.logpane{position:relative;padding:12px;border-right:1px solid var(--line);overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end;background:rgba(2,10,9,.55)}
+.log{font:11px/1.5 var(--f-m);color:#8ff2c0;display:flex;flex-direction:column;justify-content:flex-end;gap:1px}
+.log div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.log div:nth-last-child(n+9){opacity:.35}.log div:nth-last-child(n+11){opacity:.15}
+.log .ev{color:var(--gold);white-space:normal}
+.cardpane{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:14px 12px 16px;min-width:0}
+.stage{position:relative;width:min(100%,330px);height:250px;perspective:1000px;cursor:pointer;border-radius:16px;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.stage::after{content:"";position:absolute;left:22%;right:22%;bottom:6px;height:16px;border-radius:50%;background:radial-gradient(closest-side,rgba(61,255,160,.38),transparent)}
+.float{position:absolute;inset:0;display:grid;place-items:center;transform-style:preserve-3d;animation:bob 6s ease-in-out infinite}
+.kick,.spin{position:relative;width:150px;height:210px;transform-style:preserve-3d}
+.spin{animation:spin 10s linear infinite}
+.kick.on{animation:kick .9s cubic-bezier(.3,.7,.2,1)}
+@keyframes spin{to{transform:rotateY(360deg)}}
+@keyframes bob{0%,100%{transform:translateY(-7px)}50%{transform:translateY(7px)}}
+@keyframes kick{0%{transform:rotateX(0) scale(1)}45%{transform:rotateX(200deg) scale(1.12)}100%{transform:rotateX(360deg) scale(1)}}
+.card{position:absolute;inset:0;transform-style:preserve-3d}
+.c1{transform:translateX(-40px) rotateZ(-10deg)}
+.c2{transform:translateX(40px) translateZ(6px) rotateZ(9deg)}
+.face{position:absolute;inset:0;border-radius:12px;backface-visibility:hidden;-webkit-backface-visibility:hidden;box-shadow:0 12px 30px rgba(0,0,0,.5)}
+.front{background:linear-gradient(160deg,#f4fffa,var(--card) 55%,#c9eedf);color:var(--card-ink)}
+.back{transform:rotateY(180deg);background:repeating-linear-gradient(45deg,#0d5446 0 6px,#0a3d33 6px 12px);border:4px solid var(--card)}
+.back::after{content:"♠";position:absolute;inset:0;display:grid;place-items:center;font-size:56px;color:rgba(61,255,160,.55)}
+.rk{position:absolute;font:700 24px/1.05 var(--f-d);text-align:center}
+.rk.tl{top:10px;left:12px}.rk.br{bottom:10px;right:12px;transform:rotate(180deg)}
+.pip{position:absolute;inset:0;display:grid;place-items:center;font-size:84px}
+.chips{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.chip{appearance:none;cursor:pointer;background:rgba(5,22,19,.85);border:1px solid var(--line-2);border-radius:99px;padding:8px 14px;font:600 12px var(--f-m);letter-spacing:.08em;text-transform:uppercase;color:var(--fg)}
+.chip[aria-pressed="true"]{background:var(--acc);color:var(--acc-ink);border-color:var(--acc)}
+.bubble{width:100%;max-width:420px;min-height:84px;background:rgba(3,14,12,.92);border:1px solid var(--line-2);border-radius:12px;padding:12px 14px;display:grid;gap:10px;font-size:15px}
+.bubble p{white-space:pre-line}
+.bubble .ans{color:var(--acc);font-weight:600}
+.b-actions{display:flex;gap:8px;flex-wrap:wrap}
+
+/* sections */
+.sec-head{display:grid;gap:6px;margin-bottom:18px;max-width:64ch}
+.sec-head h2{font-size:clamp(26px,3.6vw,36px)}
+.grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(min(100%,430px),1fr))}
+.track{--tc:var(--acc);background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;display:grid;gap:12px;align-content:start;min-width:0}
+.track[data-t="py"]{--tc:var(--gold)}.track[data-t="html"]{--tc:var(--org)}.track[data-t="cpp"]{--tc:var(--cy)}.track[data-t="cyber"]{--tc:var(--acc)}
+.track h3{font-size:23px;display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.track h3 em{font:600 12px var(--f-m);color:var(--tc);font-style:normal;white-space:nowrap}
+.track>p{color:var(--mut);font-size:14.5px;margin-top:-6px}
+.meter{height:6px;border-radius:9px;background:#0b2b26;overflow:hidden}
+.meter i{display:block;height:100%;width:var(--p,0%);background:var(--tc);transition:width .5s}
+.lrows{display:grid;gap:6px}
+.lrow{appearance:none;width:100%;text-align:left;cursor:pointer;display:grid;grid-template-columns:26px minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px;border-radius:9px;border:1px solid var(--line);background:rgba(3,14,12,.5)}
+.lrow:hover:not([disabled]){border-color:var(--tc)}
+.lrow .ix{font:700 13px var(--f-m);color:var(--tc);text-align:center}
+.lrow .tt{min-width:0}
+.lrow .mn{font:500 12px var(--f-m);color:var(--mut);white-space:nowrap}
+.lrow.done .ix{color:var(--ok)}
+.lrow.next{border-color:var(--tc);box-shadow:0 0 0 1px var(--tc) inset}
+.lrow[disabled]{cursor:not-allowed;opacity:.5}
+
+/* leçon */
+#lesson{max-width:780px;margin:0 auto;width:100%;display:flex;flex-direction:column;gap:16px;min-width:0}
+#lesson h2{font-size:clamp(26px,4vw,38px)}
+.step{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px 18px;display:grid;gap:12px;min-width:0}
+.step h3{font-size:20px}
+.step .n{font:600 12px var(--f-m);color:var(--mut)}
+.tip{border-left:3px solid var(--gold);padding:9px 12px;background:rgba(244,199,82,.07);border-radius:0 8px 8px 0;color:#f3e3b0;font-size:14.5px}
+.codebox{border:1px solid var(--line-2);border-radius:10px;overflow:hidden;background:#030d0b;min-width:0}
+.codehead{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 10px;background:#07231f;font:600 11px var(--f-m);letter-spacing:.1em;text-transform:uppercase;color:var(--mut)}
+.copy{appearance:none;cursor:pointer;background:transparent;border:1px solid var(--line-2);border-radius:6px;padding:4px 9px;font:600 11px var(--f-m);color:var(--fg)}
+.code{margin:0;padding:12px 14px;overflow-x:auto;font:13.5px/1.6 var(--f-m);color:#c8f5e2;tab-size:4}
+.code code{background:none;border:0;padding:0;border-radius:0;font-size:inherit;color:inherit}
+.outhead{padding:4px 14px;font:600 11px var(--f-m);letter-spacing:.1em;text-transform:uppercase;color:var(--mut);border-top:1px dashed var(--line-2)}
+.out{margin:0;padding:2px 14px 12px;color:var(--acc);font:13px/1.55 var(--f-m);overflow-x:auto}
+.tk-s{color:var(--gold)}.tk-c{color:var(--dim);font-style:italic}.tk-k{color:var(--cy)}.tk-n{color:var(--org)}.tk-t{color:var(--hot)}.tk-a{color:var(--cy)}
+.play{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}
+.pv-host{display:block;min-height:210px;max-height:340px;border-radius:8px;overflow:auto;border:1px solid var(--line-2);background:#fff}
+.field{width:100%;background:#041412;border:1px solid var(--line-2);border-radius:8px;padding:10px 12px;color:var(--fg);font:14px/1.5 var(--f-m);resize:vertical}
+select.field{width:auto}
+.quiz{background:var(--panel-2);border:1px solid var(--line-2);border-radius:14px;padding:18px;display:grid;gap:12px;min-width:0}
+.quiz h3{font-size:21px}
+.q-count{font:600 12px var(--f-m);color:var(--mut)}
+.q-opt{appearance:none;display:block;width:100%;text-align:left;padding:13px 14px;border-radius:10px;border:1px solid var(--line-2);background:var(--panel);cursor:pointer;line-height:1.4}
+.q-opt:hover:not([disabled]){border-color:var(--acc)}
+.q-opt.good{border-color:var(--ok);background:rgba(61,255,160,.11)}
+.q-opt.bad{border-color:var(--bad);background:rgba(255,84,112,.11)}
+.q-opt[disabled]{cursor:default}
+.why{padding:10px 12px;border-radius:9px;background:rgba(82,228,255,.07);border:1px solid rgba(82,228,255,.25);font-size:15px}
+.result{display:grid;gap:10px;text-align:center;justify-items:center;padding:6px 0}
+.result .gain{font:700 40px var(--f-d);color:var(--acc)}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.phish{display:grid;gap:10px}
+.mail{border:1px solid var(--line-2);border-radius:10px;padding:12px;background:#041412;display:grid;gap:6px}
+.mail .from{font:600 12px var(--f-m);color:var(--cy);word-break:break-all}
+.mail .verdict{font-size:14.5px}
+
+/* outils */
+.tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.tab{appearance:none;cursor:pointer;border:1px solid var(--line-2);background:transparent;border-radius:99px;padding:10px 18px;font:600 13px var(--f-m);color:var(--mut)}
+.tab[aria-selected="true"]{background:var(--acc);color:var(--acc-ink);border-color:var(--acc)}
+.tool{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;display:grid;gap:14px;min-width:0}
+.tool h3{font-size:21px}
+.big{font:600 18px/1.5 var(--f-m);word-break:break-word;color:var(--gold)}
+.bf{font:13px/1.6 var(--f-m);white-space:pre-wrap;word-break:break-word}
+.bf-box{max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:#041412}
+.msg{min-height:22px;font-size:14.5px}
+.msg.ok{color:var(--ok)}.msg.bad{color:var(--bad)}
+.term{background:#020a09;border:1px solid var(--line-2);border-radius:10px;padding:12px;font:13px/1.5 var(--f-m);height:320px;overflow:auto}
+.term div{white-space:pre-wrap;word-break:break-word}
+.t-cmd{color:var(--acc)}.t-exp{color:var(--cy);border-left:2px solid var(--cy);padding-left:10px;margin:4px 0}.t-err{color:var(--bad)}.t-sim{color:var(--gold)}
+.termform{display:flex;gap:8px}
+.termform .field{flex:1}
+.meter-pwd{height:10px;border-radius:99px;background:#0b2b26;overflow:hidden;border:1px solid var(--line)}
+.meter-pwd i{display:block;height:100%;width:var(--p,0%);background:var(--c,var(--bad));transition:width .3s,background .3s}
+.pwd-facts{display:grid;gap:4px;font-size:14.5px}
+
+.badges{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(min(100%,230px),1fr))}
+.badge{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:13px;display:grid;gap:4px;opacity:.55}
+.badge.on{opacity:1;border-color:var(--line-2);box-shadow:0 0 0 1px rgba(61,255,160,.14) inset}
+.badge b{font:700 16px var(--f-d)}
+.badge span{font-size:13.5px;color:var(--mut)}
+.badge .st{font:600 11px var(--f-m);letter-spacing:.1em;color:var(--dim);text-transform:uppercase}
+.badge.on .st{color:var(--acc)}
+
+.foot{border-top:1px solid var(--line);padding-top:18px;color:var(--mut);font-size:14px;display:grid;gap:6px;max-width:80ch}
+.toast{position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom,0px));transform:translate(-50%,24px);opacity:0;pointer-events:none;background:var(--card);color:var(--card-ink);padding:11px 18px;border-radius:10px;font:600 14px var(--f-b);box-shadow:0 10px 30px rgba(0,0,0,.5);transition:opacity .25s,transform .25s;max-width:calc(100vw - 32px);text-align:center;z-index:20}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+
+@media (max-width:820px){
+  .hero{grid-template-columns:minmax(0,1fr)}
+  .console{grid-template-columns:minmax(0,1fr);min-height:0}
+  .cardpane{order:-1}
+  .logpane{border-right:0;border-top:1px solid var(--line);height:130px}
+}
+@media (max-width:700px){.play{grid-template-columns:minmax(0,1fr)}}
+@media (prefers-reduced-motion:reduce){
+  .spin{animation:none;transform:rotateY(-24deg)}
+  .float{animation:none}
+  .kick.on{animation:none}
+  .bar i,.meter i,.meter-pwd i{transition:none}
+}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="brand"><b aria-hidden="true">♠</b><span>Black Jack Académie</span></div>
+    <span class="sync" id="sync" data-s="local">Progression : sur cet appareil</span>
+  </header>
+
+  <div id="home" class="stack">
+    <section class="hero" aria-labelledby="t-hero">
+      <div class="hero-text">
+        <p class="eyebrow">Coder · Réseau · Cyber défensive</p>
+        <h1 id="t-hero">Black Jack <span>Académie</span></h1>
+        <p class="lead">Des missions courtes pour grands débutants. Tu gagnes de l'XP, tu montes de niveau, et tu apprends à coder comme à te protéger. Un petit pas à la fois.</p>
+        <div class="hud" aria-label="Ta progression">
+          <div class="hud-row">
+            <div class="lvl" aria-hidden="true"><small>NIV</small><span id="lvl-n">1</span></div>
+            <div class="hud-main">
+              <div class="hud-top"><strong id="rank">Recrue</strong><span id="xp-txt">0 / 50 XP</span></div>
+              <div class="bar" id="xp-bar" role="progressbar" aria-label="XP vers le niveau suivant" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i></i></div>
+              <div class="hud-sub"><span id="streak">Série : 0 jour</span><span id="done-count">0 mission terminée</span></div>
+            </div>
+          </div>
+          <button class="btn" id="go-next" type="button">Commencer</button>
+        </div>
+      </div>
+
+      <div class="console">
+        <pre class="binary" id="binary" aria-hidden="true"></pre>
+        <div class="logpane" aria-hidden="true"><div class="log" id="log"></div></div>
+        <div class="cardpane">
+          <div class="stage" id="stage" role="button" tabindex="0" aria-label="Deux as qui tournent. Appuie dessus pour une aide, une blague ou un défi.">
+            <div class="float"><div class="kick" id="kick"><div class="spin">
+              <div class="card c1"><div class="face front"><span class="rk tl">A<br>♣</span><span class="pip">♣</span><span class="rk br">A<br>♣</span></div><div class="face back"></div></div>
+              <div class="card c2"><div class="face front"><span class="rk tl">A<br>♠</span><span class="pip">♠</span><span class="rk br">A<br>♠</span></div><div class="face back"></div></div>
+            </div></div></div>
+          </div>
+          <div class="chips" role="group" aria-label="Ce que disent les cartes">
+            <button class="chip" type="button" data-kind="help" aria-pressed="false">Aide</button>
+            <button class="chip" type="button" data-kind="joke" aria-pressed="false">Blague</button>
+            <button class="chip" type="button" data-kind="challenge" aria-pressed="false">Défi</button>
+          </div>
+          <div class="bubble" id="bubble" role="status" aria-live="polite">
+            <p id="b-text">Touche les cartes : une aide, une blague ou un défi, au choix.</p>
+            <div class="b-actions" id="b-actions"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="parcours" aria-labelledby="t-par">
+      <div class="sec-head">
+        <p class="eyebrow">Parcours</p>
+        <h2 id="t-par">Choisis ta mission</h2>
+        <p class="mut">Chaque mission dure 5 à 9 minutes. Réussis le quiz pour gagner de l'XP et débloquer la suite. Tout est expliqué pour quelqu'un qui n'a jamais codé.</p>
+      </div>
+      <div class="grid" id="tracks"></div>
+    </section>
+
+    <section id="outils" aria-labelledby="t-out">
+      <div class="sec-head">
+        <p class="eyebrow">Outils</p>
+        <h2 id="t-out">Le labo</h2>
+        <p class="mut">Trois outils pour comprendre ce que tu apprends. Ils tournent dans cette page : rien n'est envoyé ailleurs.</p>
+      </div>
+      <div class="tabs" role="tablist" aria-label="Outils du labo">
+        <button class="tab" role="tab" id="tab-labo" aria-selected="true" aria-controls="pan-labo" type="button">Labo de codes</button>
+        <button class="tab" role="tab" id="tab-net" aria-selected="false" aria-controls="pan-net" type="button">Réseau 101</button>
+        <button class="tab" role="tab" id="tab-pwd" aria-selected="false" aria-controls="pan-pwd" type="button">Mot de passe</button>
+      </div>
+      <div class="tool" id="pan-labo" role="tabpanel" aria-labelledby="tab-labo"></div>
+      <div class="tool" id="pan-net" role="tabpanel" aria-labelledby="tab-net" hidden></div>
+      <div class="tool" id="pan-pwd" role="tabpanel" aria-labelledby="tab-pwd" hidden></div>
+    </section>
+
+    <section id="badges" aria-labelledby="t-bad">
+      <div class="sec-head">
+        <p class="eyebrow">Badges</p>
+        <h2 id="t-bad">Ta collection</h2>
+      </div>
+      <div class="badges" id="badge-list"></div>
+    </section>
+  </div>
+
+  <section id="lesson" hidden aria-live="polite"></section>
+
+  <footer class="foot">
+    <p>Ce que tu apprends ici s'utilise sur <b>tes propres appareils</b>, ou avec l'accord écrit de leur propriétaire. Jamais sur le réseau ou les comptes de quelqu'un d'autre.</p>
+    <p>Les commandes du simulateur Réseau 101 sont fictives : aucune connexion réelle n'est faite.</p>
+  </footer>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function(){
+'use strict';
+
+/* ---------- utilitaires ---------- */
+const $=(s,el=document)=>el.querySelector(s);
+const $$=(s,el=document)=>Array.from(el.querySelectorAll(s));
+function h(tag,attrs,...kids){
+  const e=document.createElement(tag);
+  for(const [k,v] of Object.entries(attrs||{})){
+    if(v===false||v==null) continue;
+    if(k==='class') e.className=v;
+    else if(k==='text') e.textContent=v;
+    else if(k==='html') e.innerHTML=v;
+    else if(k.startsWith('on')) e.addEventListener(k.slice(2),v);
+    else if(v===true) e.setAttribute(k,'');
+    else e.setAttribute(k,v);
+  }
+  for(const kid of kids.flat()){ if(kid==null||kid===false) continue; e.append(kid.nodeType?kid:document.createTextNode(String(kid))); }
+  return e;
+}
+const esc=s=>s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const reduce=!!(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches);
+function shuffle(a){a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
+function debounce(fn,ms){let t;return(...a)=>{clearTimeout(t);t=setTimeout(()=>fn(...a),ms);};}
+const lastPick={};
+function pick(arr,key){let i;do{i=Math.floor(Math.random()*arr.length);}while(arr.length>1&&i===lastPick[key]);lastPick[key]=i;return arr[i];}
+let toastT=0;
+function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('on');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('on'),3600);}
+async function copyText(text,btn){
+  const old=btn.textContent;
+  try{await navigator.clipboard.writeText(text);btn.textContent='Copié';}catch(e){btn.textContent='Sélectionne le texte';}
+  setTimeout(()=>{btn.textContent=old;},1600);
+}
+
+/* ---------- coloration légère du code ---------- */
+function hl(src,re,cls){
+  let out='',last=0,m;re.lastIndex=0;
+  while((m=re.exec(src))){
+    out+=esc(src.slice(last,m.index));
+    let k=0;for(let i=1;i<m.length;i++){if(m[i]!==undefined){k=i-1;break;}}
+    out+='<span class="tk-'+cls[k]+'">'+esc(m[0])+'</span>';
+    last=m.index+m[0].length;
+    if(m[0].length===0) re.lastIndex++;
+  }
+  return out+esc(src.slice(last));
+}
+const RE={
+  python:[/("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')|(#.*)|\b(def|return|if|elif|else|for|while|in|import|from|print|True|False|None|and|or|not)\b|\b(\d+(?:\.\d+)?)\b/g,['s','c','k','n']],
+  cpp:[/("(?:\\.|[^"\\])*")|(\/\/.*)|(#include\s*<[^>]*>)|\b(int|double|bool|true|false|return|if|else|for|while|using|namespace|void|char|float|const|std)\b|\b(\d+(?:\.\d+)?)\b/g,['s','c','k','k','n']],
+  html:[/(<!--[\s\S]*?-->)|(<\/?[A-Za-z][\w-]*)|(\/?>)|("[^"]*")|([\w-]+(?==))/g,['c','t','t','s','a']],
+};
+function highlight(src,lang){const r=RE[lang];return r?hl(src,r[0],r[1]):esc(src);}
+const LANGNAME={python:'Python',cpp:'C++',html:'HTML / CSS',txt:'Texte'};
+
+/* ---------- données : parcours et leçons ---------- */
+const TRACKS={
+  py:{name:'Python',sub:"Le plus doux pour débuter."},
+  html:{name:'HTML & CSS',sub:'Construis ta première page web.'},
+  cpp:{name:'C++',sub:'Le langage des jeux vidéo.'},
+  cyber:{name:'Cyber défensive',sub:'Te protéger, protéger les autres.'},
+};
+const ORDER=['py','html','cpp','cyber'];
+
+const LESSONS=[
+/* ===== PYTHON ===== */
+{id:'py1',track:'py',title:"Dire bonjour à l'ordinateur",min:5,steps:[
+ {h:"Un programme, c'est quoi ?",p:`Une liste d'instructions que l'ordinateur suit dans l'ordre, de haut en bas. Un croupier fait pareil : mêmes règles, à chaque partie.`},
+ {h:'Ta première instruction',p:`<code>print</code> affiche du texte à l'écran. Le texte se met entre guillemets.`,code:{lang:'python',text:`print("Bonjour, la table !")`,out:`Bonjour, la table !`}},
+ {h:'Python sait aussi calculer',p:`Sans guillemets, Python fait le calcul.`,code:{lang:'python',text:`print(2 + 3)`,out:`5`},tip:`Pour essayer chez toi : installe Python, crée un fichier bonjour.py, puis tape « python bonjour.py » dans un terminal.`}],
+ quiz:[
+  {q:'Quelle ligne affiche le mot Salut ?',o:['print(Salut)','print("Salut")','afficher "Salut"'],a:1,why:'Le texte va entre guillemets, dans print( ).'},
+  {q:'Que montre print(2 + 3) ?',o:['2 + 3','5','23'],a:1,why:'Sans guillemets, Python calcule d\'abord : 2 + 3 = 5.'},
+  {q:'Un programme, c\'est…',o:['une liste d\'instructions suivies dans l\'ordre','un câble réseau','un mot de passe'],a:0,why:'Exactement : des instructions, exécutées l\'une après l\'autre.'}]},
+{id:'py2',track:'py',title:'Les variables : des boîtes à valeurs',min:6,steps:[
+ {h:'Une boîte avec une étiquette',p:`Une variable garde une valeur pour plus tard. Tu choisis le nom, Python range la valeur dedans.`,code:{lang:'python',text:`main = 17
+print(main)`,out:`17`}},
+ {h:'Le texte aussi',p:`On peut coller des textes avec <code>+</code>.`,code:{lang:'python',text:`nom = "Ana"
+print("Salut " + nom)`,out:`Salut Ana`}},
+ {h:'Changer la valeur',p:`Le signe <code>=</code> veut dire « range dedans ». On peut donc recalculer.`,code:{lang:'python',text:`total = 10
+total = total + 5
+print(total)`,out:`15`},tip:`Un nom de variable : des lettres, des chiffres et _ . Pas d'espace, et il ne commence pas par un chiffre.`}],
+ quiz:[
+  {q:'Que vaut total après : total = 10 puis total = total + 5 ?',o:['10','15','105'],a:1,why:'On prend l\'ancienne valeur (10), on ajoute 5, et on la range dans total : 15.'},
+  {q:'Quel nom de variable est valide ?',o:['ma_main','2cartes','ma main'],a:0,why:'Pas d\'espace, et pas de chiffre au début : ma_main passe.'},
+  {q:'Une variable sert à…',o:['garder une valeur pour s\'en servir plus tard','effacer l\'écran','brancher Internet'],a:0,why:'C\'est une boîte étiquetée où l\'on range une valeur.'}]},
+{id:'py3',track:'py',title:'Décider avec if',min:6,steps:[
+ {h:'Si… alors…',p:`Un programme peut choisir. <code>if</code> veut dire « si ». Ce qui est décalé vers la droite (l'indentation) ne s'exécute que si la condition est vraie.`,code:{lang:'python',text:`total = 23
+if total > 21:
+    print("Perdu, tu as dépassé 21")
+else:
+    print("Tu peux encore tirer")`,out:`Perdu, tu as dépassé 21`}},
+ {h:'Comparer des valeurs',p:`<code>&gt;</code> plus grand · <code>&lt;</code> plus petit · <code>==</code> égal (deux signes !) · <code>!=</code> différent.`,tip:`Un seul = range une valeur. Deux == comparent. C'est l'erreur n°1 des débutants.`}],
+ quiz:[
+  {q:'Que veut dire == ?',o:['est égal à','range dans','est plus grand que'],a:0,why:'Deux signes = comparent. Un seul signe range une valeur.'},
+  {q:'Avec total = 18, que fait « if total > 21: … else: … » ?',o:['Il exécute la partie else','Il exécute la partie if','Il plante'],a:0,why:'18 n\'est pas plus grand que 21 : la condition est fausse, donc c\'est else.'},
+  {q:'À quoi sert le décalage (indentation) après if ?',o:['À montrer ce qui dépend de la condition','À faire joli','À mettre en gras'],a:0,why:'En Python, l\'indentation fait partie de la grammaire.'}]},
+{id:'py4',track:'py',title:'Répéter avec les boucles',min:6,steps:[
+ {h:'for : répéter un nombre de fois',p:`<code>range(3)</code> donne 0, 1, 2 : Python compte à partir de 0.`,code:{lang:'python',text:`for i in range(3):
+    print("Carte", i)`,out:`Carte 0
+Carte 1
+Carte 2`}},
+ {h:'while : répéter tant que…',p:`Comme le croupier : il tire tant que son total est sous 17.`,code:{lang:'python',text:`total = 10
+while total < 17:
+    total = total + 3
+    print(total)`,out:`13
+16
+19`}}],
+ quiz:[
+  {q:'Combien de lignes affiche : for i in range(3): print(i) ?',o:['2','3','4'],a:1,why:'i vaut 0, puis 1, puis 2 : trois tours.'},
+  {q:'Quand while s\'arrête-t-il ?',o:['Quand sa condition devient fausse','Jamais','Après 10 tours exactement'],a:0,why:'Il répète tant que la condition est vraie.'},
+  {q:'Quelle est la première valeur de i dans range(3) ?',o:['0','1','3'],a:0,why:'Python compte à partir de 0.'}]},
+{id:'py5',track:'py',title:'Les fonctions : tes propres outils',min:7,steps:[
+ {h:'Une recette réutilisable',p:`<code>def</code> crée la fonction, <code>return</code> renvoie le résultat.`,code:{lang:'python',text:`def total_main(a, b):
+    return a + b
+
+print(total_main(10, 7))`,out:`17`}},
+ {h:'Pourquoi ?',p:`Écrire une fois, utiliser cent fois. Moins de copier-coller, moins d'erreurs, et un nom qui explique ce que ça fait.`}],
+ quiz:[
+  {q:'Quel mot crée une fonction ?',o:['def','func','make'],a:0,why:'def, pour « définir ».'},
+  {q:'Que renvoie total_main(10, 7) ?',o:['17','107','Rien'],a:0,why:'La fonction additionne a et b, puis renvoie le résultat : 17.'},
+  {q:'return sert à…',o:['renvoyer un résultat','relancer le programme','afficher en rouge'],a:0,why:'return donne sa valeur à celui qui a appelé la fonction.'}]},
+{id:'py6',track:'py',title:'Mini-projet : tirer une carte',min:8,steps:[
+ {h:'Le hasard',p:`Le module <code>random</code> sait choisir au hasard. <code>import</code> le charge.`,code:{lang:'python',text:`import random
+
+cartes = ["As", "Roi", "Dame", "10"]
+print("Tu tires :", random.choice(cartes))`,out:`Tu tires : Dame   (change à chaque lancement)`}},
+ {h:'À toi de jouer',p:`Ajoute <code>"Valet"</code> à la liste, enregistre dans carte.py et lance <code>python carte.py</code> plusieurs fois.`,tip:`Tu viens d'écrire le cœur d'un jeu de cartes. Le croupier, c'est la même idée avec une boucle while.`}],
+ quiz:[
+  {q:'Quel module donne du hasard ?',o:['random','hazard','chance'],a:0,why:'random, livré avec Python.'},
+  {q:'Que fait random.choice(cartes) ?',o:['Choisit un élément au hasard dans la liste','Trie la liste','Supprime la liste'],a:0,why:'Il pioche un élément au hasard.'},
+  {q:'Comment charger un module en Python ?',o:['import','include','load'],a:0,why:'import. (include, c\'est pour le C++.)'}]},
+
+/* ===== HTML & CSS ===== */
+{id:'h1',track:'html',title:'Ta première page web',min:5,steps:[
+ {h:'Le HTML, le squelette',p:`Une page web, c'est du texte avec des <b>balises</b>. <code>&lt;h1&gt;</code> fait un grand titre, <code>&lt;p&gt;</code> un paragraphe. Chaque balise s'ouvre et se ferme.`},
+ {h:'Essaie',p:`Modifie le texte à gauche : l'aperçu se met à jour tout seul.`,play:`<h1>Black Jack</h1>
+<p>Ma première page.</p>`}],
+ quiz:[
+  {q:'Quelle balise fait un grand titre ?',o:['<h1>','<p>','<img>'],a:0,why:'h1 pour heading 1, le titre principal.'},
+  {q:'Un paragraphe <p> se ferme avec…',o:['</p>','<p/>','end p'],a:0,why:'La balise fermante a une barre oblique : </p>.'},
+  {q:'Le HTML décrit…',o:['la structure de la page','la vitesse d\'Internet','les mots de passe'],a:0,why:'Titres, paragraphes, liens, images : la structure.'}]},
+{id:'h2',track:'html',title:'Les liens',min:5,steps:[
+ {h:'Aller d\'une page à l\'autre',p:`<code>&lt;a href="adresse"&gt;texte&lt;/a&gt;</code> crée un lien. L'adresse va dans <code>href</code>. Pour une image on écrirait <code>&lt;img src="photo.jpg" alt="description"&gt;</code> : <code>alt</code> décrit l'image à ceux qui ne la voient pas.`},
+ {h:'Essaie',p:`Change le texte du lien.`,play:`<p>Va voir
+  <a href="https://fr.wikipedia.org/wiki/Blackjack">les règles du blackjack</a>.</p>
+<p>Un grand merci à l'As de pique ♠</p>`}],
+ quiz:[
+  {q:'Quelle balise crée un lien ?',o:['<a>','<link>','<url>'],a:0,why:'a, pour « anchor » (ancre).'},
+  {q:'À quoi sert alt dans <img> ?',o:['À décrire l\'image (accessibilité)','À changer sa couleur','À accélérer la page'],a:0,why:'Les lecteurs d\'écran lisent alt à voix haute.'},
+  {q:'Où met-on l\'adresse du lien ?',o:['href','src','alt'],a:0,why:'href, pour « hypertext reference ».'}]},
+{id:'h3',track:'html',title:'Listes et structure',min:5,steps:[
+ {h:'Des listes à puces',p:`<code>&lt;ul&gt;</code> est la liste, chaque <code>&lt;li&gt;</code> est un élément.`},
+ {h:'Essaie',p:`Ajoute une carte à la liste.`,play:`<h2>Mes cartes préférées</h2>
+<ul>
+  <li>As de pique</li>
+  <li>Roi de cœur</li>
+</ul>`}],
+ quiz:[
+  {q:'Quelle balise crée un élément de liste ?',o:['<li>','<ul>','<td>'],a:0,why:'li pour « list item ».'},
+  {q:'<ul> sert à…',o:['une liste à puces','une ligne de tableau','un lien'],a:0,why:'ul pour « unordered list ».'},
+  {q:'Où se place <li> ?',o:['Dans <ul> ou <ol>','Dans <img>','Nulle part'],a:0,why:'Les éléments de liste vivent dans une liste.'}]},
+{id:'h4',track:'html',title:'CSS : donner du style',min:6,steps:[
+ {h:'La décoration',p:`Le CSS décide des couleurs, des tailles, des polices. Une règle : <code>sélecteur { propriété: valeur; }</code>.`},
+ {h:'Essaie',p:`Change les couleurs dans le bloc <code>style</code>.`,play:`<style>
+  body { background: #111; color: #9fffc4; font-family: sans-serif; }
+  h1 { color: #ff5d73; }
+</style>
+<h1>Black Jack</h1>
+<p>Change les couleurs !</p>`}],
+ quiz:[
+  {q:'Que fait « h1 { color: red; } » ?',o:['Il colore les titres h1 en rouge','Il crée un titre rouge','Il supprime les titres'],a:0,why:'La règle vise tous les h1 et change leur couleur.'},
+  {q:'Le CSS sert à…',o:['mettre en forme la page','stocker des données','chiffrer des messages'],a:0,why:'Mise en forme : couleurs, tailles, espaces.'},
+  {q:'Chaque ligne d\'une règle CSS finit par…',o:[';',',','.'],a:0,why:'Le point-virgule sépare les propriétés.'}]},
+{id:'h5',track:'html',title:'Mini-projet : ta table de Black Jack',min:8,steps:[
+ {h:'Assemble tout',p:`Titres, texte, classes CSS : voici une petite table. Les cartes utilisent une <b>classe</b> (<code>.carte</code>) appliquée à plusieurs balises.`},
+ {h:'À toi de jouer',p:`Ajoute une troisième carte, change la couleur du fond, puis écris le total.`,play:`<style>
+  body { background:#0b1f1a; color:#d8fff0; font-family:sans-serif; text-align:center; }
+  .carte { display:inline-block; width:80px; height:110px; margin:8px;
+           border-radius:8px; background:#fff; color:#111;
+           line-height:110px; font-size:28px; }
+  .rouge { color:#d4213d; }
+</style>
+<h1>Ma table de Black Jack</h1>
+<div class="carte">A♠</div>
+<div class="carte rouge">K♥</div>
+<p>Total : 21 !</p>`}],
+ quiz:[
+  {q:'Que fait class="carte" dans une balise ?',o:['Lui applique le style .carte','Supprime la balise','La rend invisible'],a:0,why:'La classe relie la balise aux règles CSS du même nom.'},
+  {q:'Comment cible-t-on la classe carte en CSS ?',o:['.carte { }','#carte { }','carte() { }'],a:0,why:'Un point devant le nom désigne une classe.'},
+  {q:'Un site, c\'est surtout…',o:['du HTML pour la structure, du CSS pour le style','que du CSS','que du HTML sans style'],a:0,why:'Les deux travaillent ensemble.'}]},
+
+/* ===== C++ ===== */
+{id:'c1',track:'cpp',title:'Hello, C++',min:7,steps:[
+ {h:'Un langage qu\'il faut compiler',p:`Python est lu ligne par ligne. En C++, tu écris ton code, puis un <b>compilateur</b> le transforme en vrai programme. C'est très rapide : on s'en sert pour les jeux vidéo.`},
+ {h:'Ton premier programme',p:`<code>main</code> est le point de départ. <code>std::cout</code> affiche. Chaque instruction finit par <code>;</code>.`,code:{lang:'cpp',text:`#include <iostream>
+
+int main() {
+    std::cout << "Bonjour, la table !" << std::endl;
+    return 0;
+}`,out:`Bonjour, la table !`}},
+ {h:'Le lancer chez toi',p:`Avec g++ installé : <code>g++ bonjour.cpp -o bonjour</code>, puis <code>./bonjour</code> (sous Windows : <code>bonjour.exe</code>).`}],
+ quiz:[
+  {q:'Que fait le compilateur ?',o:['Il transforme ton code en programme','Il efface ton code','Il te connecte à Internet'],a:0,why:'Du texte lisible par toi, vers un programme exécutable.'},
+  {q:'Quelle instruction affiche du texte ?',o:['std::cout <<','print','echo'],a:0,why:'cout, pour « console output ».'},
+  {q:'Par quoi finit une instruction en C++ ?',o:[';','.',':'],a:0,why:'Le point-virgule.'}]},
+{id:'c2',track:'cpp',title:'Variables et types',min:6,steps:[
+ {h:'Il faut préciser le type',p:`<code>int</code> entier · <code>double</code> nombre à virgule · <code>bool</code> vrai ou faux · <code>std::string</code> texte.`,code:{lang:'cpp',text:`#include <iostream>
+#include <string>
+
+int main() {
+    int total = 17;
+    double cote = 1.5;
+    bool aGagne = false;
+    std::string nom = "Ana";
+    std::cout << nom << " a " << total << std::endl;
+    return 0;
+}`,out:`Ana a 17`}}],
+ quiz:[
+  {q:'Quel type pour le nombre 17 ?',o:['int','std::string','bool'],a:0,why:'int, pour un entier.'},
+  {q:'Quel type pour vrai ou faux ?',o:['bool','int','double'],a:0,why:'bool, d\'après le mathématicien Boole.'},
+  {q:'Pourquoi préciser le type ?',o:['Pour que l\'ordinateur sache quelle place réserver','Pour la décoration','Pour changer la couleur'],a:0,why:'Chaque type occupe une place différente en mémoire.'}]},
+{id:'c3',track:'cpp',title:'Conditions : if et else',min:6,steps:[
+ {h:'Choisir',p:`La condition va entre parenthèses, le bloc entre accolades <code>{ }</code>.`,code:{lang:'cpp',text:`int total = 23;
+if (total > 21) {
+    std::cout << "Perdu" << std::endl;
+} else {
+    std::cout << "Encore une carte ?" << std::endl;
+}`,out:`Perdu`}}],
+ quiz:[
+  {q:'Où met-on la condition ?',o:['Entre parenthèses après if','Entre guillemets','Après else'],a:0,why:'if (condition) { … }'},
+  {q:'Que fait else ?',o:['Il exécute ce bloc si la condition est fausse','Il répète','Il efface'],a:0,why:'C\'est le « sinon ».'},
+  {q:'Que veut dire == ?',o:['est égal à','range dans','est plus grand que'],a:0,why:'Même règle qu\'en Python.'}]},
+{id:'c4',track:'cpp',title:'Boucles : for et while',min:6,steps:[
+ {h:'Répéter',p:`<code>for (départ; condition; pas)</code> : ici i commence à 1, continue tant que i ≤ 3, et monte de 1 à chaque tour (<code>i++</code>).`,code:{lang:'cpp',text:`for (int i = 1; i <= 3; i++) {
+    std::cout << "Carte " << i << std::endl;
+}`,out:`Carte 1
+Carte 2
+Carte 3`}}],
+ quiz:[
+  {q:'Que fait i++ ?',o:['Ajoute 1 à i','Efface i','Divise i'],a:0,why:'i++ veut dire « i = i + 1 ».'},
+  {q:'Combien de lignes pour « for (int i = 1; i <= 3; i++) » ?',o:['3','2','4'],a:0,why:'i vaut 1, 2 puis 3.'},
+  {q:'Une boucle sert à…',o:['répéter des instructions','se connecter','dessiner'],a:0,why:'Répéter sans recopier.'}]},
+{id:'c5',track:'cpp',title:'Mini-projet : le croupier',min:9,steps:[
+ {h:'Le croupier est une boucle',p:`Il tire tant que son total est sous 17 : c'est exactement un <code>while</code>. Compile avec <code>g++ croupier.cpp -o croupier</code>.`,code:{lang:'cpp',text:`#include <iostream>
+
+int main() {
+    int total = 10;
+    while (total < 17) {
+        total += 3;
+        std::cout << "Le croupier a " << total << std::endl;
+    }
+    std::cout << "Il s'arrête à " << total << std::endl;
+    return 0;
+}`,out:`Le croupier a 13
+Le croupier a 16
+Le croupier a 19
+Il s'arrête à 19`},tip:`Dans le vrai jeu, la valeur de chaque carte vient d'un paquet mélangé. Tu sais déjà faire la boucle : c'est le plus dur.`}],
+ quiz:[
+  {q:'Que fait total += 3 ?',o:['Ajoute 3 à total','Remplace total par 3','Soustrait 3'],a:0,why:'+= ajoute et range le résultat.'},
+  {q:'Pourquoi while ici ?',o:['On répète tant que total < 17','On répète 3 fois','On ne répète pas'],a:0,why:'On ne sait pas à l\'avance combien de cartes il tirera.'},
+  {q:'Que s\'affiche à la fin ?',o:['Il s\'arrête à 19','Il s\'arrête à 17','Rien'],a:0,why:'13, puis 16, puis 19 : à 19 la condition devient fausse.'}]},
+
+/* ===== CYBER DÉFENSIVE ===== */
+{id:'y1',track:'cyber',title:'Mots de passe solides',min:6,steps:[
+ {h:'La longueur gagne',p:`Un mot de passe long bat un mot de passe « compliqué » mais court. Quatre mots au hasard (comme <i>cheval nuage tapis rouge</i>) sont plus faciles à retenir, et bien plus durs à deviner que <i>P@ss1!</i>.`},
+ {h:'Les trois règles',p:`Un mot de passe différent par site. Un gestionnaire de mots de passe pour les retenir. Et jamais dans un message, ni à quelqu'un qui te le demande.`},
+ {h:'Teste le principe',p:`Invente un mot de passe pour t'entraîner (jamais ton vrai) et regarde l'estimation.`,widget:'pwd'}],
+ quiz:[
+  {q:'Quel mot de passe est le plus solide ?',o:['cheval nuage tapis rouge','Azerty1!','motdepasse'],a:0,why:'Long, au hasard, et facile à retenir.'},
+  {q:'Peut-on réutiliser le même mot de passe partout ?',o:['Non : si un site fuit, tous tombent','Oui, c\'est pratique','Seulement le lundi'],a:0,why:'Une seule fuite ouvrirait tous tes comptes.'},
+  {q:'À qui donner son mot de passe ?',o:['À personne','Au « support » qui m\'écrit','À un ami'],a:0,why:'Un vrai support ne le demande jamais.'}]},
+{id:'y2',track:'cyber',title:'La double authentification (2FA)',min:5,steps:[
+ {h:'Deux preuves valent mieux qu\'une',p:`Même si quelqu'un devine ton mot de passe, il lui faut une seconde preuve : un code, une appli, une clé physique.`},
+ {h:'Quelle méthode ?',p:`Une application d'authentification est plus sûre que le SMS. Garde les codes de secours dans un endroit sûr, séparé de ton téléphone. Commence par ton e-mail : c'est la clé de tous tes autres comptes.`}],
+ quiz:[
+  {q:'La 2FA sert à…',o:['ajouter une seconde preuve d\'identité','accélérer le site','cacher ton adresse IP'],a:0,why:'Deux preuves au lieu d\'une.'},
+  {q:'Quelle méthode est en général la plus sûre ?',o:['Une application d\'authentification','Un SMS','Un code écrit sur un post-it collé à l\'écran'],a:0,why:'Les SMS peuvent être détournés.'},
+  {q:'Où garder les codes de secours ?',o:['Dans un endroit sûr, séparé du téléphone','Dans les notes du même téléphone','Sur un réseau social'],a:0,why:'Si le téléphone est perdu, ils doivent rester accessibles ailleurs.'}]},
+{id:'y3',track:'cyber',title:'Reconnaître le phishing',min:7,steps:[
+ {h:'Le piège',p:`Le phishing (hameçonnage) imite un message de confiance pour te faire cliquer ou donner des informations. Il joue sur l'urgence et la peur : « ton compte sera fermé dans une heure ».`},
+ {h:'Les quatre réflexes',p:`<b>1.</b> Qui m'écrit vraiment ? Regarde l'adresse complète. <b>2.</b> Y a-t-il urgence ou menace ? <b>3.</b> Le lien : survole-le sans cliquer. <b>4.</b> En cas de doute, ouvre le site toi-même, sans passer par le message.`},
+ {h:'Entraîne ton œil',p:`Quatre messages fictifs. Piège ou légitime ?`,widget:'phish'}],
+ quiz:[
+  {q:'Que cherche surtout à créer un message de phishing ?',o:['L\'urgence ou la peur','De la patience','De l\'ennui'],a:0,why:'Pressé, on réfléchit moins.'},
+  {q:'Face à un lien suspect, tu…',o:['ne cliques pas et ouvres le site toi-même','cliques vite pour voir','le transfères à tout le monde'],a:0,why:'Passer par l\'adresse que tu connais évite le faux site.'},
+  {q:'Une banque te demande ton mot de passe par e-mail. C\'est…',o:['un piège : elle ne le fait jamais','normal','obligatoire'],a:0,why:'Aucune banque sérieuse ne demande ça.'}]},
+{id:'y4',track:'cyber',title:'Chiffrer : cacher un message',min:7,steps:[
+ {h:'Le chiffre de César',p:`Jules César décalait les lettres. Avec un décalage de 3, A devient D, B devient E… et « BONJOUR » devient « ERQMRXU ».`},
+ {h:'Pourquoi c\'est faible',p:`Il n'y a que 25 décalages possibles : on les essaie tous en quelques secondes. Les vrais systèmes (comme AES) ont tellement de clés possibles qu'aucun ordinateur ne peut tout essayer.`},
+ {h:'À toi',p:`Dans le Labo de codes, décode le message secret du jour et teste tous les décalages.`,go:{tab:'labo',label:'Ouvrir le Labo de codes'}}],
+ quiz:[
+  {q:'Avec un décalage de 1, A devient…',o:['B','Z','A'],a:0,why:'On avance d\'une lettre : A donne B.'},
+  {q:'Pourquoi le chiffre de César est-il faible ?',o:['Il y a trop peu de clés possibles','Il est trop long','Il demande Internet'],a:0,why:'25 essais suffisent pour tout tester.'},
+  {q:'Chiffrer un message, c\'est…',o:['le rendre illisible sans la clé','le supprimer','le publier'],a:0,why:'Seul celui qui a la clé peut le relire.'}]},
+{id:'y5',track:'cyber',title:'Internet : IP, DNS, HTTPS',min:7,steps:[
+ {h:'L\'adresse IP',p:`Chaque appareil sur un réseau a une adresse IP, comme une adresse postale. Chez toi, elle ressemble souvent à <code>192.168.1.23</code>. Ton routeur (ta box) en a une autre pour parler à Internet.`},
+ {h:'Le DNS, l\'annuaire',p:`Tu tapes un nom (exemple.fr). Le DNS le traduit en adresse IP, comme un annuaire téléphonique.`},
+ {h:'Le cadenas HTTPS',p:`HTTPS chiffre ce qui circule entre toi et le site : personne au milieu ne peut le lire. Attention, le cadenas veut dire « connexion chiffrée », pas « site honnête ».`},
+ {h:'Essaie',p:`Dans le simulateur Réseau 101, lance <code>ping</code>, puis <code>tracert</code>.`,go:{tab:'net',label:'Ouvrir Réseau 101'}}],
+ quiz:[
+  {q:'Le DNS sert à…',o:['traduire un nom de site en adresse IP','chiffrer les mots de passe','accélérer le Wi-Fi'],a:0,why:'C\'est l\'annuaire d\'Internet.'},
+  {q:'Que garantit le cadenas HTTPS ?',o:['Une connexion chiffrée','Que le site est honnête','Que ton appareil est sans virus'],a:0,why:'Le chiffrement du trajet, rien de plus.'},
+  {q:'192.168.1.20 est…',o:['une adresse IP locale','un mot de passe','un nom de site'],a:0,why:'Les adresses en 192.168 sont privées, à l\'intérieur de chez toi.'}]},
+{id:'y6',track:'cyber',title:'Hacker, oui, mais éthique',min:6,steps:[
+ {h:'Chapeau blanc, chapeau noir',p:`Un hacker éthique cherche des failles pour les corriger, avec autorisation. Un pirate attaque sans permission : c'est illégal et il fait de vraies victimes.`},
+ {h:'La règle d\'or',p:`Tu t'entraînes uniquement sur tes propres appareils, ou sur des plateformes prévues pour ça, avec l'accord du propriétaire. Jamais sur le Wi-Fi d'un voisin, le réseau de l'école ou un site qui n'est pas à toi.`},
+ {h:'Où apprendre légalement',p:`Des plateformes d'entraînement (les « CTF », des laboratoires) proposent des cibles faites exprès. Les métiers existent : analyste sécurité, testeur d'intrusion (avec contrat), réponse aux incidents.`}],
+ quiz:[
+  {q:'Un hacker éthique agit…',o:['avec autorisation, pour corriger','en secret','sur n\'importe quel site'],a:0,why:'L\'autorisation fait toute la différence.'},
+  {q:'Où s\'entraîner ?',o:['Sur ses appareils ou des plateformes prévues','Sur le Wi-Fi d\'un voisin','Sur un site de banque'],a:0,why:'Toujours un terrain d\'entraînement légal.'},
+  {q:'Tu découvres une faille sur un site. Le bon réflexe ?',o:['La signaler au propriétaire','La revendre','L\'exploiter'],a:0,why:'Signaler, c\'est ce que font les chercheurs en sécurité.'}]},
+];
+const LESSON_BY_ID={};LESSONS.forEach(l=>{LESSON_BY_ID[l.id]=l;});
+
+const LEVELS=[
+ {n:1,name:'Recrue',xp:0},{n:2,name:'Joueur',xp:50},{n:3,name:'Croupier',xp:120},{n:4,name:'Chef de salle',xp:220},
+ {n:5,name:'As de la table',xp:350},{n:6,name:'Maître du 21',xp:520},{n:7,name:'Légende',xp:740}];
+function levelInfo(xp){
+  let i=0;for(let k=0;k<LEVELS.length;k++){if(xp>=LEVELS[k].xp) i=k;}
+  const cur=LEVELS[i],next=LEVELS[i+1]||null;
+  return {cur,next,pct:next?(xp-cur.xp)/(next.xp-cur.xp):1,toNext:next?next.xp-xp:0};
+}
+
+const BADGES=[
+ {id:'first',name:'Première mise',desc:'Termine ta première mission.',test:s=>Object.keys(s.done).length>=1},
+ {id:'poly',name:'Polyglotte',desc:'Termine une mission dans 3 parcours différents.',test:s=>new Set(Object.keys(s.done).map(id=>LESSON_BY_ID[id]&&LESSON_BY_ID[id].track)).size>=3},
+ {id:'perfect',name:'Sans faute',desc:'Réussis un quiz sans aucune erreur.',test:s=>Object.values(s.done).some(d=>d.perfect)},
+ {id:'crypt',name:'Chiffreur',desc:'Décode le message secret du jour.',test:s=>!!s.secretDay},
+ {id:'net',name:'Explorateur réseau',desc:'Essaie 4 commandes dans Réseau 101.',test:s=>Object.keys(s.cmds).length>=4},
+ {id:'pwd',name:'Mot de passe béton',desc:'Invente un mot de passe « très solide » dans le testeur.',test:s=>!!s.pwdStrong},
+ {id:'streak',name:'Série de 3',desc:'Apprends 3 jours de suite.',test:s=>s.streak>=3},
+ {id:'track',name:'Parcours complet',desc:'Termine toutes les missions d\'un parcours.',test:s=>ORDER.some(t=>LESSONS.filter(l=>l.track===t).every(l=>s.done[l.id]))},
+];
+
+/* contenu des cartes */
+const TIPS=[
+ 'Tape le code toi-même au lieu de le copier : ta mémoire retient ce que tes doigts font.',
+ 'Une erreur n\'est pas un échec. Lis le message : il indique souvent la ligne à regarder.',
+ 'Dix minutes par jour valent mieux qu\'une heure le dimanche.',
+ 'Avant de lancer un exemple, devine ce qu\'il va afficher. Puis vérifie.',
+ 'Change une valeur dans l\'exemple et regarde ce qui se passe : c\'est comme ça qu\'on apprend vite.',
+ 'Quand tu bloques, relis la ligne juste avant l\'erreur : c\'est souvent là.',
+ 'Un mot de passe long (quatre mots au hasard) vaut mieux qu\'un mot de passe court et compliqué.',
+ 'Active la double authentification sur ton e-mail en premier : c\'est la clé de tous tes comptes.',
+ 'Essaie le Labo de codes : casser un chiffre de César fait comprendre pourquoi il est faible.',
+ 'Dans Réseau 101, lance ping puis tracert : tu verras le chemin que fait un message.',
+];
+const JOKES=[
+ 'Il y a 10 types de personnes : celles qui comprennent le binaire et les autres.',
+ 'Au blackjack, le croupier est une boucle while : tant qu\'il a moins de 17, il tire.',
+ 'Mon mot de passe est « incorrect ». Comme ça, quand je me trompe, l\'ordinateur me rappelle le bon.',
+ 'J\'ai demandé un As au croupier. Il m\'a répondu : « Erreur 404 : carte introuvable. »',
+ 'Pourquoi le programmeur est resté coincé sous la douche ? Sur le shampoing, c\'était écrit : « Mousser, rincer, répéter ».',
+ 'Combien de programmeurs faut-il pour changer une ampoule ? Aucun, c\'est un problème matériel.',
+ 'Un développeur perd au casino. « Ce n\'est pas un bug, c\'est une fonctionnalité de la maison. »',
+ 'Le phishing, c\'est comme la pêche : si tu mords sans réfléchir, tu finis dans le seau.',
+ 'Pourquoi les hackers éthiques dorment bien ? Ils ont toujours l\'autorisation écrite.',
+ 'En cybersécurité, un bon As, c\'est un compte avec la double authentification.',
+ 'Le croupier à l\'informaticien : « Tu tires ? » L\'informaticien : « Non, je compile. »',
+ 'Pourquoi les boucles sont fatiguées ? Elles recommencent toujours depuis le début.',
+];
+const CHALLENGES=[
+ {q:'Combien vaut A + A + 9 au blackjack ?',a:'21. Un As vaut 11, ou 1 si 11 ferait dépasser : 11 + 1 + 9.'},
+ {q:'Écris 21 en binaire. Indice : 16 + 4 + 1.',a:'10101'},
+ {q:'Décode ce message César (décalage 1) : CPOKPVS',a:'BONJOUR : chaque lettre recule d\'un cran.'},
+ {q:'En Python, quel symbole commence un commentaire ?',a:'Le dièse : # (Python ignore le reste de la ligne).'},
+ {q:'En C++, quelle instruction affiche du texte ?',a:'std::cout << "texte";'},
+ {q:'Plus sûr : 8 caractères au hasard ou 16 caractères au hasard ?',a:'16. Chaque caractère en plus multiplie le travail pour deviner.'},
+ {q:'Vrai ou faux : le cadenas du navigateur prouve que le site est honnête.',a:'Faux. Il prouve seulement que la connexion est chiffrée.'},
+ {q:'Quel mot Python répète une action un nombre de fois connu ?',a:'for (avec range).'},
+ {q:'Un valet, une dame et un roi valent combien au blackjack ?',a:'10 chacun.'},
+ {q:'Combien de balises faut-il pour un paragraphe HTML ?',a:'Deux : <p> pour ouvrir et </p> pour fermer.'},
+];
+const SECRETS=[
+ 'LA MAISON GAGNE MAIS PAS TOUJOURS','UN AS ET UN ROI FONT VINGT ET UN','TAPE TON CODE TOI MEME',
+ 'UN BON MOT DE PASSE EST UN MOT DE PASSE LONG','NE CLIQUE JAMAIS SUR UN LIEN SUSPECT','TOUT LE MONDE DEBUTE UN JOUR',
+ 'RESTE CURIEUX ET SOIS PRUDENT','ACTIVE LA DOUBLE AUTHENTIFICATION','CHAQUE BUG T APPREND QUELQUE CHOSE',
+ 'LE BINAIRE EST SIMPLE COMME ZERO ET UN',
+];
+
+/* ---------- état et sauvegarde ---------- */
+const LS_KEY='bj-academie-v1';
+const blank=()=>({v:1,xp:0,done:{},badges:{},streak:0,lastDay:'',cmds:{},secretDay:'',pwdStrong:false,updated:0});
+let S=blank();
+function loadLocal(){try{const raw=localStorage.getItem(LS_KEY);if(raw) return Object.assign(blank(),JSON.parse(raw));}catch(e){}return null;}
+function saveLocal(){try{localStorage.setItem(LS_KEY,JSON.stringify(S));}catch(e){}}
+const SYNC_TXT={local:'Progression : sur cet appareil',saving:'Progression : enregistrement…',cloud:'Progression : synchronisée',retry:'Progression : nouvel essai…'};
+function setSync(k){const el=$('#sync');el.dataset.s=k;el.textContent=SYNC_TXT[k]||SYNC_TXT.local;}
+let dbDoc=null,saving=false,dirty=false,saveTimer=0,fails=0;
+function scheduleCloud(){if(!dbDoc) return;dirty=true;clearTimeout(saveTimer);saveTimer=setTimeout(flush,900);}
+async function flush(){
+  if(!dbDoc||saving||!dirty) return;
+  saving=true;dirty=false;setSync('saving');
+  try{await dbDoc.set(JSON.parse(JSON.stringify(S)));fails=0;setSync('cloud');}
+  catch(e){
+    fails++;
+    if(fails>=3||(e&&(e.code==='invalid_argument'||e.code==='revoked'||e.code==='not_granted'))){dbDoc=null;setSync('local');}
+    else{dirty=true;setSync('retry');}
+  }finally{saving=false;if(dirty&&dbDoc) scheduleCloud();}
+}
+function change(fn){fn(S);S.updated=Date.now();saveLocal();scheduleCloud();renderAll();}
+async function initCloud(){
+  try{
+    if(!window.claude||!claude.use) return;
+    const [db,user]=await Promise.all([claude.use('db'),claude.use('user')]);
+    if(!db||!user) return;
+    const id=await user.id();if(!id) return;
+    const doc=db.doc('data/users/'+id+'/profile');
+    const snap=await Promise.race([doc.get(),sleep(10000).then(()=>{throw new Error('timeout');})]);
+    const remote=snap.exists?snap.data():null;
+    if(remote&&(remote.updated||0)>(S.updated||0)){S=Object.assign(blank(),remote);saveLocal();renderAll();}
+    dbDoc=doc;
+    if(!remote||S.updated>(remote.updated||0)){dirty=true;flush();}else setSync('cloud');
+  }catch(e){/* on reste sur l'appareil */}
+}
+
+const today=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');};
+const dayDiff=(a,b)=>Math.round((new Date(b+'T00:00:00')-new Date(a+'T00:00:00'))/864e5);
+
+function addXP(n,why){
+  const before=levelInfo(S.xp).cur.n;
+  change(s=>{
+    s.xp+=n;
+    const t=today();
+    if(s.lastDay!==t){s.streak=(s.lastDay&&dayDiff(s.lastDay,t)===1)?s.streak+1:1;s.lastDay=t;}
+  });
+  logEvent('XP +'+n+' · '+why);
+  const after=levelInfo(S.xp).cur;
+  if(after.n>before) toast('Niveau '+after.n+' : '+after.name+' !');
+  checkBadges();
+}
+function checkBadges(){
+  const got=BADGES.filter(b=>!S.badges[b.id]&&b.test(S));
+  if(!got.length) return;
+  change(s=>{got.forEach(b=>{s.badges[b.id]=Date.now();});});
+  got.forEach(b=>{toast('Badge débloqué : '+b.name);logEvent('Badge : '+b.name);});
+}
+function unlocked(l){const arr=LESSONS.filter(x=>x.track===l.track);const i=arr.indexOf(l);return i===0||!!S.done[arr[i-1].id];}
+function nextLesson(){
+  const done=Object.entries(S.done).sort((a,b)=>(b[1].last||0)-(a[1].last||0));
+  if(done.length&&LESSON_BY_ID[done[0][0]]){
+    const t=LESSON_BY_ID[done[0][0]].track;
+    const n=LESSONS.find(l=>l.track===t&&!S.done[l.id]&&unlocked(l));
+    if(n) return n;
+  }
+  return ORDER.map(t=>LESSONS.find(l=>l.track===t&&!S.done[l.id]&&unlocked(l))).find(Boolean)||null;
+}
+
+/* ---------- rendu de l'accueil ---------- */
+function renderHUD(){
+  const li=levelInfo(S.xp),nl=nextLesson(),nd=Object.keys(S.done).length;
+  $('#lvl-n').textContent=li.cur.n;
+  $('#rank').textContent=li.cur.name;
+  $('#xp-txt').textContent=li.next?(S.xp+' / '+li.next.xp+' XP'):(S.xp+' XP · niveau max');
+  const pct=Math.round(li.pct*100);
+  $('#xp-bar i').style.setProperty('--p',pct+'%');
+  $('#xp-bar').setAttribute('aria-valuenow',String(pct));
+  $('#streak').textContent='Série : '+S.streak+(S.streak>1?' jours':' jour');
+  $('#done-count').textContent=nd+' / '+LESSONS.length+' missions';
+  const b=$('#go-next');
+  if(nl){b.textContent=(nd?'Continuer : ':'Commencer : ')+nl.title;b.disabled=false;}
+  else{b.textContent='Tout est terminé. Bravo !';b.disabled=true;}
+}
+function renderTracks(){
+  const root=$('#tracks');root.replaceChildren();
+  const nl=nextLesson();
+  ORDER.forEach(t=>{
+    const arr=LESSONS.filter(l=>l.track===t);
+    const nd=arr.filter(l=>S.done[l.id]).length;
+    const card=h('article',{class:'track','data-t':t},
+      h('h3',{},h('span',{text:TRACKS[t].name}),h('em',{text:nd+' / '+arr.length})),
+      h('p',{text:TRACKS[t].sub}),
+      h('div',{class:'meter',role:'presentation'},h('i',{style:'--p:'+Math.round(100*nd/arr.length)+'%'})));
+    const rows=h('div',{class:'lrows'});
+    arr.forEach((l,i)=>{
+      const ok=!!S.done[l.id],open=unlocked(l);
+      rows.append(h('button',{class:'lrow'+(ok?' done':'')+(nl&&nl.id===l.id?' next':''),type:'button',disabled:!open,
+        'aria-label':l.title+(ok?' (terminée)':open?'':' (verrouillée)'),onclick:()=>openLesson(l.id)},
+        h('span',{class:'ix',text:ok?'✓':open?String(i+1):'·'}),
+        h('span',{class:'tt',text:l.title}),
+        h('span',{class:'mn',text:ok?'validée':open?l.min+' min':'verrouillée'})));
+    });
+    card.append(rows);root.append(card);
+  });
+}
+function renderBadges(){
+  const root=$('#badge-list');root.replaceChildren();
+  BADGES.forEach(b=>{
+    const on=!!S.badges[b.id];
+    root.append(h('div',{class:'badge'+(on?' on':'')},
+      h('span',{class:'st',text:on?'Débloqué':'À débloquer'}),h('b',{text:b.name}),h('span',{text:b.desc})));
+  });
+}
+function renderAll(){renderHUD();renderTracks();renderBadges();}
+
+/* ---------- vues ---------- */
+function showView(v){
+  $('#home').hidden=(v!=='home');$('#lesson').hidden=(v!=='lesson');
+  window.scrollTo(0,0);
+}
+function selectTab(name){
+  ['labo','net','pwd'].forEach(k=>{
+    const on=k===name;
+    $('#tab-'+k).setAttribute('aria-selected',String(on));
+    $('#pan-'+k).hidden=!on;
+  });
+}
+function goTool(tab){showView('home');selectTab(tab);$('#outils').scrollIntoView({behavior:reduce?'auto':'smooth'});}
+
+/* ---------- aperçu HTML (sans iframe) ---------- */
+function renderPreview(sr,code){
+  const doc=new DOMParser().parseFromString(code,'text/html');
+  doc.querySelectorAll('script,iframe,object,embed,link,meta,base,frame,frameset,noscript,form').forEach(n=>n.remove());
+  doc.querySelectorAll('*').forEach(el=>{
+    for(const a of Array.from(el.attributes)){
+      const n=a.name.toLowerCase(),v=a.value.trim().toLowerCase();
+      if(n.startsWith('on')||((n==='href'||n==='src'||n==='action'||n==='formaction'||n==='xlink:href'||n==='srcdoc')&&(v.startsWith('javascript:')||v.startsWith('data:text/html')))) el.removeAttribute(a.name);
+    }
+    if(el.tagName==='A'){el.setAttribute('target','_blank');el.setAttribute('rel','noopener noreferrer');}
+  });
+  const styles=Array.from(doc.querySelectorAll('style'));
+  const css=styles.map(s=>s.textContent.replace(/(^|[},\s])(?:html|body)(?=\s*[,{])/g,'$1:host')).join('\n');
+  styles.forEach(s=>s.remove());
+  sr.replaceChildren();
+  const base=document.createElement('style');
+  base.textContent=':host{display:block;padding:12px;background:#fff;color:#161616;font:16px/1.5 system-ui,sans-serif;overflow:auto}img{max-width:100%}'+css;
+  sr.append(base);
+  Array.from(doc.body.childNodes).forEach(n=>sr.append(document.importNode(n,true)));
+}
+
+/* ---------- éléments de leçon ---------- */
+function codeEl(c){
+  const btn=h('button',{class:'copy',type:'button'},'Copier');
+  btn.addEventListener('click',()=>copyText(c.text,btn));
+  const code=h('code');code.innerHTML=highlight(c.text,c.lang);
+  const box=h('div',{class:'codebox'},h('div',{class:'codehead'},h('span',{text:LANGNAME[c.lang]||c.lang}),btn),h('pre',{class:'code'},code));
+  if(c.out!=null) box.append(h('div',{class:'outhead',text:'Résultat'}),h('pre',{class:'out',text:c.out}));
+  return box;
+}
+function playEl(lessonId,init){
+  const ta=h('textarea',{class:'field',id:'pg-'+lessonId,rows:11,spellcheck:'false','aria-label':'Éditeur HTML et CSS'});
+  ta.value=init;
+  const host=h('div',{class:'pv-host','aria-label':'Aperçu de ta page'});
+  const sr=host.attachShadow({mode:'open'});
+  const draw=()=>renderPreview(sr,ta.value);
+  ta.addEventListener('input',debounce(draw,150));
+  const reset=h('button',{class:'btn ghost small',type:'button',onclick:()=>{ta.value=init;draw();}},'Réinitialiser');
+  draw();
+  return h('div',{},h('div',{class:'play'},h('div',{},ta),host),h('div',{class:'row',style:'margin-top:10px'},reset));
+}
+function stepEl(l,s,i,n){
+  const el=h('article',{class:'step'},h('p',{class:'n',text:'Étape '+(i+1)+' sur '+n}),h('h3',{text:s.h}));
+  if(s.p) el.append(h('p',{html:s.p}));
+  if(s.code) el.append(codeEl(s.code));
+  if(s.play) el.append(playEl(l.id+'-'+i,s.play));
+  if(s.widget==='pwd') el.append(buildPwd('l'+l.id));
+  if(s.widget==='phish') el.append(buildPhish());
+  if(s.go) el.append(h('div',{class:'row'},h('button',{class:'btn small',type:'button',onclick:()=>goTool(s.go.tab)},s.go.label)));
+  if(s.tip) el.append(h('p',{class:'tip',text:s.tip}));
+  return el;
+}
+function buildPhish(){
+  const MAILS=[
+   {from:'securite@ta-banque-verif.example',t:'Ton compte est suspendu ! Clique ici dans les 30 minutes pour le réactiver.',trap:true,why:'Urgence, menace et adresse étrange : un piège classique.'},
+   {from:'no-reply@ton-fournisseur.example',t:'Ton colis arrive demain. Tu peux suivre sa livraison depuis ton compte, sans cliquer sur ce message.',trap:false,why:'Rien ne te presse, et le message te renvoie vers ton propre compte.'},
+   {from:'promo@gagnant-telephone.example',t:'Félicitations, tu as gagné un téléphone ! Donne ton numéro de carte pour payer les frais de port.',trap:true,why:'Un gain surprise qui demande une carte bancaire : fuis.'},
+   {from:'rdv@cabinet-medical.example',t:'Rappel : ton rendez-vous est lundi à 10 h. Pour le modifier, appelle le numéro inscrit sur ta carte de rendez-vous.',trap:false,why:'Pas de lien, pas de pression, et tu utilises un numéro que tu connais déjà.'},
+  ];
+  const root=h('div',{class:'phish'});
+  MAILS.forEach(m=>{
+    const verdict=h('p',{class:'verdict msg','aria-live':'polite'});
+    const b1=h('button',{class:'btn ghost small',type:'button'},'Piège'),b2=h('button',{class:'btn ghost small',type:'button'},'Légitime');
+    const answer=trap=>{
+      [b1,b2].forEach(b=>{b.disabled=true;});
+      const ok=trap===m.trap;
+      verdict.className='verdict msg '+(ok?'ok':'bad');
+      verdict.textContent=(ok?'✓ Bien vu. ':'✗ Pas tout à fait. ')+m.why;
+    };
+    b1.addEventListener('click',()=>answer(true));b2.addEventListener('click',()=>answer(false));
+    root.append(h('div',{class:'mail'},h('span',{class:'from',text:'De : '+m.from}),h('p',{text:m.t}),h('div',{class:'row'},b1,b2),verdict));
+  });
+  return root;
+}
+
+/* ---------- leçon + quiz ---------- */
+let cur=null;
+function openLesson(id){cur=LESSON_BY_ID[id];renderLesson();showView('lesson');}
+function renderLesson(){
+  const l=cur,root=$('#lesson');root.replaceChildren();
+  const arr=LESSONS.filter(x=>x.track===l.track),idx=arr.indexOf(l);
+  root.append(
+    h('div',{class:'row'},h('button',{class:'btn ghost small',type:'button',onclick:()=>{showView('home');}},'← Parcours')),
+    h('p',{class:'eyebrow',text:TRACKS[l.track].name+' · mission '+(idx+1)+' sur '+arr.length+' · environ '+l.min+' min'}),
+    h('h2',{text:l.title}));
+  if(S.done[l.id]) root.append(h('p',{class:'tip',text:'Mission déjà validée. Tu peux la refaire pour t\'entraîner : le quiz ne rapporte de l\'XP qu\'une fois.'}));
+  l.steps.forEach((s,i)=>root.append(stepEl(l,s,i,l.steps.length)));
+  root.append(buildQuiz(l));
+}
+function completeLesson(l,wrong){
+  const prev=S.done[l.id],perfect=wrong===0;
+  let gain=0;
+  if(!prev) gain=30+(perfect?10:0);
+  else if(!prev.perfect&&perfect) gain=10;
+  change(s=>{const d=s.done[l.id]||{};d.perfect=!!d.perfect||perfect;d.wrong=wrong;d.last=Date.now();s.done[l.id]=d;});
+  if(gain) addXP(gain,l.title);else checkBadges();
+  return gain;
+}
+function buildQuiz(l){
+  const box=h('section',{class:'quiz','aria-label':'Quiz de la mission'});
+  let qi=0,wrong=0;
+  function draw(){
+    box.replaceChildren();
+    if(qi>=l.quiz.length){finish();return;}
+    const q=l.quiz[qi];
+    const opts=shuffle(q.o.map((t,i)=>({t,ok:i===q.a})));
+    const fb=h('div',{'aria-live':'polite'});
+    const next=h('button',{class:'btn small',type:'button',hidden:true,onclick:()=>{qi++;draw();}},qi+1<l.quiz.length?'Question suivante':'Voir mon résultat');
+    let answered=false;
+    box.append(h('p',{class:'q-count',text:'Quiz · question '+(qi+1)+' sur '+l.quiz.length}),h('h3',{text:q.q}));
+    const btns=opts.map(o=>{
+      const b=h('button',{class:'q-opt',type:'button',text:o.t});
+      b.addEventListener('click',()=>{
+        if(answered) return;answered=true;
+        if(!o.ok) wrong++;
+        btns.forEach((bb,j)=>{bb.disabled=true;if(opts[j].ok){bb.classList.add('good');bb.textContent='✓ '+opts[j].t;}});
+        if(!o.ok){b.classList.add('bad');b.textContent='✗ '+o.t;}
+        fb.append(h('p',{class:'why',text:(o.ok?'Bonne réponse. ':'Pas tout à fait. ')+q.why}));
+        next.hidden=false;next.focus();
+      });
+      return b;
+    });
+    btns.forEach(b=>box.append(b));
+    box.append(fb,h('div',{class:'row'},next));
+  }
+  function finish(){
+    const total=l.quiz.length,good=total-wrong;
+    const gain=completeLesson(l,wrong);
+    const nl=nextLesson();
+    box.replaceChildren(h('div',{class:'result'},
+      h('p',{class:'q-count',text:'Mission terminée'}),
+      h('p',{class:'gain',text:gain?('+'+gain+' XP'):'0 XP'}),
+      h('p',{text:good+' bonne'+(good>1?'s':'')+' réponse'+(good>1?'s':'')+' sur '+total+(wrong===0?' : sans faute !':'.')}),
+      gain?null:h('p',{class:'mut small',text:'Pas d\'XP en plus : tu avais déjà validé cette mission.'}),
+      h('div',{class:'row',style:'justify-content:center'},
+        nl?h('button',{class:'btn',type:'button',onclick:()=>openLesson(nl.id)},'Mission suivante : '+nl.title):null,
+        h('button',{class:'btn ghost',type:'button',onclick:()=>showView('home')},'Retour aux parcours'),
+        h('button',{class:'btn ghost',type:'button',onclick:()=>{qi=0;wrong=0;draw();}},'Refaire le quiz'))));
+  }
+  draw();
+  return box;
+}
+
+/* ---------- labo de codes ---------- */
+const caesar=(t,k)=>t.replace(/[A-Za-z]/g,c=>{const b=c<='Z'?65:97;return String.fromCharCode((((c.charCodeAt(0)-b+k)%26)+26)%26+b);});
+const bytesOf=t=>Array.from(new TextEncoder().encode(t));
+const decode=b=>new TextDecoder('utf-8',{fatal:true}).decode(new Uint8Array(b));
+const MODES={
+ caesar:{name:'Chiffre de César',enc:(t,k)=>caesar(t,k),dec:(t,k)=>caesar(t,-k)},
+ rot13:{name:'ROT13',enc:t=>caesar(t,13),dec:t=>caesar(t,13)},
+ b64:{name:'Base64',enc:t=>btoa(bytesOf(t).map(b=>String.fromCharCode(b)).join('')),dec:t=>decode(Array.from(atob(t.replace(/\s+/g,'')),c=>c.charCodeAt(0)))},
+ bin:{name:'Binaire',enc:t=>bytesOf(t).map(b=>b.toString(2).padStart(8,'0')).join(' '),dec:t=>{const s=t.replace(/[^01]/g,'');if(!s||s.length%8) throw new Error('bin');const o=[];for(let i=0;i<s.length;i+=8)o.push(parseInt(s.slice(i,i+8),2));return decode(o);}},
+ hex:{name:'Hexadécimal',enc:t=>bytesOf(t).map(b=>b.toString(16).padStart(2,'0')).join(' '),dec:t=>{const s=t.replace(/[^0-9a-fA-F]/g,'');if(!s||s.length%2) throw new Error('hex');const o=[];for(let i=0;i<s.length;i+=2)o.push(parseInt(s.slice(i,i+2),16));return decode(o);}},
+};
+const norm=s=>s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+function todaySecret(){
+  const d=new Date();
+  const dayNum=Math.floor(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate())/864e5);
+  return {text:SECRETS[dayNum%SECRETS.length],shift:3+((dayNum*7)%20)};
+}
+function buildLab(){
+  const root=h('div',{style:'display:grid;gap:18px'});
+  /* convertisseur */
+  const mode=h('select',{class:'field',id:'lab-mode','aria-label':'Format'},...Object.entries(MODES).map(([k,m])=>h('option',{value:k,text:m.name})));
+  const rEnc=h('input',{type:'radio',name:'lab-dir',id:'lab-enc',value:'enc',checked:true});
+  const rDec=h('input',{type:'radio',name:'lab-dir',id:'lab-dec',value:'dec'});
+  const shift=h('input',{type:'range',id:'lab-shift',min:'1',max:'25',value:'3','aria-label':'Décalage'});
+  const shiftOut=h('span',{class:'mono',text:'3'});
+  const shiftBox=h('label',{class:'row small',for:'lab-shift'},h('span',{text:'Décalage'}),shift,shiftOut);
+  const inp=h('textarea',{class:'field',id:'lab-in',rows:3,placeholder:'Écris ou colle un texte ici',spellcheck:'false','aria-label':'Texte de départ'});
+  inp.value='BONJOUR';
+  const out=h('textarea',{class:'field',id:'lab-out',rows:3,readonly:true,'aria-label':'Résultat'});
+  const err=h('p',{class:'msg bad',role:'status'});
+  const copyBtn=h('button',{class:'btn ghost small',type:'button'},'Copier le résultat');
+  copyBtn.addEventListener('click',()=>copyText(out.value,copyBtn));
+  const bruteBtn=h('button',{class:'btn small',type:'button'},'Tester les 25 décalages');
+  const bruteOut=h('div',{class:'bf-box',hidden:true});
+  function run(){
+    const m=MODES[mode.value],dir=rEnc.checked?'enc':'dec';
+    shiftBox.hidden=mode.value!=='caesar';
+    bruteBtn.hidden=!(mode.value==='caesar'&&dir==='dec');
+    if(bruteBtn.hidden) bruteOut.hidden=true;
+    shiftOut.textContent=shift.value;
+    try{out.value=m[dir](inp.value,+shift.value);err.textContent='';}
+    catch(e){out.value='';err.textContent='Ce texte ne correspond pas au format choisi.';}
+  }
+  [mode,rEnc,rDec,shift,inp].forEach(el=>el.addEventListener('input',run));
+  [rEnc,rDec].forEach(el=>el.addEventListener('change',run));
+  bruteBtn.addEventListener('click',()=>{
+    bruteOut.replaceChildren();
+    for(let k=1;k<=25;k++) bruteOut.append(h('div',{class:'bf',text:String(k).padStart(2,' ')+'  →  '+caesar(inp.value,-k)}));
+    bruteOut.hidden=false;
+  });
+  /* message secret */
+  const sec=todaySecret(),cipher=caesar(sec.text,sec.shift);
+  const guess=h('input',{class:'field',id:'sec-in',placeholder:'Ta réponse',autocomplete:'off','aria-label':'Message décodé'});
+  const fb=h('p',{class:'msg',role:'status'});
+  const hint=h('button',{class:'btn ghost small',type:'button'},'Indice');
+  const ok=h('button',{class:'btn small',type:'button'},'Valider');
+  hint.addEventListener('click',()=>{fb.className='msg';fb.textContent='Le décalage est compris entre '+(sec.shift-2)+' et '+(sec.shift+2)+'. Utilise « Tester les 25 décalages » ci-dessus.';});
+  const submit=()=>{
+    if(norm(guess.value)===norm(sec.text)){
+      fb.className='msg ok';
+      if(S.secretDay!==today()){fb.textContent='✓ Décodé ! +25 XP.';change(s=>{s.secretDay=today();});addXP(25,'message secret');}
+      else fb.textContent='✓ Décodé. Tu avais déjà gagné l\'XP du jour : reviens demain pour un nouveau message.';
+    }else{fb.className='msg bad';fb.textContent='Pas encore. Essaie un autre décalage.';}
+  };
+  ok.addEventListener('click',submit);
+  guess.addEventListener('keydown',e=>{if(e.key==='Enter') submit();});
+  root.append(
+    h('div',{style:'display:grid;gap:12px'},
+      h('h3',{text:'Convertisseur'}),
+      h('p',{class:'mut small',text:'Chiffre et déchiffre de petits messages pour comprendre comment ça marche. Ce sont des codes pédagogiques : ils ne protègent rien.'}),
+      h('div',{class:'row'},mode,h('label',{class:'row small',for:'lab-enc'},rEnc,'Encoder'),h('label',{class:'row small',for:'lab-dec'},rDec,'Décoder'),shiftBox),
+      inp,out,err,h('div',{class:'row'},copyBtn,bruteBtn),bruteOut),
+    h('div',{style:'display:grid;gap:10px;border-top:1px solid var(--line);padding-top:16px'},
+      h('h3',{text:'Le message secret du jour'}),
+      h('p',{class:'mut small',text:'Un message chiffré avec le chiffre de César. Trouve le bon décalage pour le lire : +25 XP, une fois par jour.'}),
+      h('p',{class:'big',text:cipher}),
+      h('div',{class:'row'},guess,ok,hint),fb));
+  run();
+  return root;
+}
+
+/* ---------- testeur de mot de passe ---------- */
+const COMMON=['123456','password','azerty','qwerty','motdepasse','000000','111111','abc123','soleil','bonjour','iloveyou','admin','letmein','doudou','football'];
+function assess(pw){
+  const chars=Array.from(pw),len=chars.length;
+  if(!len) return null;
+  let bits;
+  const words=pw.trim().split(/[\s-]+/).filter(Boolean);
+  if(words.length>=4&&words.every(w=>/^[a-zà-ÿ']{3,}$/i.test(w))) bits=words.length*11;   /* phrase de passe */
+  else{
+    let pool=0;
+    if(/[a-z]/.test(pw)) pool+=26; if(/[A-Z]/.test(pw)) pool+=26; if(/\d/.test(pw)) pool+=10; if(/[^A-Za-z0-9]/.test(pw)) pool+=33;
+    bits=len*Math.log2(Math.max(pool,2));
+    bits-=(len-new Set(chars).size)*2;
+    if(/(0123|1234|2345|3456|4567|5678|6789|abcd|bcde|cdef|azer|zert|qwer|wert)/i.test(pw)) bits*=0.6;
+  }
+  const low=pw.toLowerCase();
+  if(COMMON.some(c=>low.includes(c))) bits=Math.min(bits,22);
+  if(/^(.)\1+$/.test(pw)) bits=Math.min(bits,8);
+  bits=Math.max(0,Math.min(bits,128));
+  let label,color,pct;
+  if(bits<28){label='Très faible';color='var(--bad)';pct=12;}
+  else if(bits<40){label='Faible';color='var(--org)';pct=30;}
+  else if(bits<60){label='Correct';color='var(--gold)';pct=55;}
+  else if(bits<80){label='Solide';color='var(--cy)';pct=78;}
+  else{label='Très solide';color='var(--acc)';pct=100;}
+  const secs=Math.pow(2,bits)/1e10;
+  let time;
+  if(secs<1) time='moins d\'une seconde';
+  else if(secs<60) time=Math.round(secs)+' secondes';
+  else if(secs<3600) time=Math.round(secs/60)+' minutes';
+  else if(secs<86400) time=Math.round(secs/3600)+' heures';
+  else if(secs<31557600) time=Math.round(secs/86400)+' jours';
+  else if(secs<31557600*1e6) time=Math.round(secs/31557600).toLocaleString('fr-FR')+' ans';
+  else time='des millions d\'années';
+  return {len,bits:Math.round(bits),label,color,pct,time,strong:bits>=80};
+}
+function buildPwd(sfx){
+  const root=h('div',{style:'display:grid;gap:12px'});
+  const inp=h('input',{class:'field',id:'pwd-in-'+sfx,type:'password',autocomplete:'off',spellcheck:'false',placeholder:'Invente un mot de passe pour t\'entraîner','aria-label':'Mot de passe à tester'});
+  const show=h('input',{type:'checkbox',id:'pwd-show-'+sfx});
+  show.addEventListener('change',()=>{inp.type=show.checked?'text':'password';});
+  const meter=h('div',{class:'meter-pwd',role:'presentation'},h('i'));
+  const label=h('strong',{class:'mono',text:'—'});
+  const facts=h('div',{class:'pwd-facts'});
+  inp.addEventListener('input',()=>{
+    const a=assess(inp.value);
+    if(!a){meter.firstChild.style.setProperty('--p','0%');label.textContent='—';facts.replaceChildren();return;}
+    meter.firstChild.style.setProperty('--p',a.pct+'%');meter.firstChild.style.setProperty('--c',a.color);
+    label.textContent=a.label;
+    facts.replaceChildren(
+      h('span',{text:a.len+' caractères · environ '+a.bits+' bits'}),
+      h('span',{class:'mut',text:'Temps pour tout essayer (estimation grossière, 10 milliards d\'essais par seconde) : '+a.time+'.'}));
+    if(a.strong&&!S.pwdStrong){change(s=>{s.pwdStrong=true;});addXP(10,'mot de passe béton');}
+  });
+  root.append(
+    h('p',{class:'mut small',text:'Ce que tu tapes reste dans cette page : rien n\'est envoyé ni enregistré. N\'écris jamais ton vrai mot de passe : invente-en un pour t\'entraîner.'}),
+    inp,h('label',{class:'row small',for:'pwd-show-'+sfx},show,'Afficher'),
+    h('div',{class:'row',style:'justify-content:space-between'},h('span',{class:'mut small',text:'Solidité estimée'}),label),meter,facts,
+    h('p',{class:'mut small',text:'Essaie « cheval nuage tapis rouge », puis « Azerty1! », puis un mélange de 16 caractères au hasard.'}));
+  return root;
+}
+
+/* ---------- Réseau 101 (simulateur) ---------- */
+function fakeIp(host){let x=0;for(const c of host) x=(x*31+c.charCodeAt(0))>>>0;return '203.0.113.'+(1+x%250);}
+const validHost=s=>/^[a-z0-9]([a-z0-9.-]{0,60}[a-z0-9])?$/i.test(s)&&s.includes('.');
+function buildNet(){
+  const root=h('div',{style:'display:grid;gap:12px'});
+  const term=h('div',{class:'term',role:'log','aria-live':'polite',tabindex:'0','aria-label':'Terminal simulé'});
+  const inp=h('input',{class:'field',id:'net-in',placeholder:'help',autocomplete:'off',autocapitalize:'off',spellcheck:'false','aria-label':'Commande'});
+  const go=h('button',{class:'btn small',type:'submit'},'Entrer');
+  const form=h('form',{class:'termform'},inp,go);
+  let running=false;
+  const line=(cls,text)=>{term.append(h('div',{class:cls,text}));term.scrollTop=term.scrollHeight;};
+  const useCmd=n=>{if(!S.cmds[n]){change(s=>{s.cmds[n]=1;});addXP(5,'commande '+n);}};
+  const exp=t=>line('t-exp','↳ '+t);
+  async function type(lines,delay){for(const l of lines){line('',l);if(!reduce) await sleep(delay);}}
+  async function run(raw){
+    const parts=raw.trim().split(/\s+/).filter(Boolean);
+    if(!parts.length) return;
+    const cmd=parts[0].toLowerCase(),host=(parts[1]||'').toLowerCase();
+    line('t-cmd','bj@academie> '+raw.trim());
+    running=true;go.disabled=true;
+    try{
+      if(cmd==='help'){
+        await type(['Commandes disponibles :','  ping <hôte>       tester si un site répond','  nslookup <hôte>   trouver l\'adresse IP d\'un nom','  tracert <hôte>    voir le chemin parcouru','  ipconfig          voir ta configuration réseau','  netstat           voir les connexions ouvertes','  clear             vider l\'écran','Exemple : ping exemple.fr'],40);
+      }else if(cmd==='clear'){term.replaceChildren();}
+      else if(cmd==='ping'){
+        if(!validHost(host)){line('t-err','Impossible de trouver l\'hôte « '+(parts[1]||'')+' ». Essaie : ping exemple.fr');}
+        else{
+          const ip=fakeIp(host),t=[0,0,0,0].map(()=>20+Math.floor(Math.random()*9));
+          await type(['Envoi d\'une requête Ping sur '+host+' ['+ip+'] avec 32 octets de données :'],200);
+          for(const ms of t){line('','Réponse de '+ip+' : octets=32 temps='+ms+' ms TTL=56');if(!reduce) await sleep(420);}
+          const mn=Math.min(...t),mx=Math.max(...t),av=Math.round(t.reduce((a,b)=>a+b,0)/4);
+          await type(['','Statistiques Ping pour '+ip+' :','    Paquets : envoyés = 4, reçus = 4, perdus = 0 (perte 0%)','    Durée en ms : minimum = '+mn+', maximum = '+mx+', moyenne = '+av],60);
+          exp('« temps » est l\'aller-retour du message, en millisecondes : plus c\'est petit, plus la connexion est rapide.');
+          exp('Perte 0 % : tout est revenu, la connexion est stable.');
+          useCmd('ping');
+        }
+      }else if(cmd==='nslookup'){
+        if(!validHost(host)){line('t-err','Syntaxe : nslookup exemple.fr');}
+        else{
+          await type(['Serveur :  box.local','Address:   192.168.1.1','','Nom :      '+host,'Address:   '+fakeIp(host)],90);
+          exp('Le DNS a traduit le nom « '+host+' » en adresse IP : c\'est l\'annuaire d\'Internet.');
+          exp('Le serveur qui répond ici (192.168.1.1) est ta box.');
+          useCmd('nslookup');
+        }
+      }else if(cmd==='tracert'||cmd==='traceroute'){
+        if(!validHost(host)){line('t-err','Syntaxe : tracert exemple.fr');}
+        else{
+          const ip=fakeIp(host);
+          await type(['Détermination de l\'itinéraire vers '+host+' ['+ip+'], 30 sauts maximum :','  1     1 ms     1 ms     1 ms  192.168.1.1','  2     8 ms     7 ms     8 ms  10.20.0.1','  3    12 ms    11 ms    13 ms  198.51.100.9','  4    19 ms    18 ms    20 ms  198.51.100.77','  5    24 ms    23 ms    25 ms  '+ip,'Itinéraire déterminé.'],260);
+          exp('Chaque ligne est un routeur traversé. Le n°1, c\'est ta box ; le dernier, c\'est le site.');
+          exp('Les temps grandissent avec la distance : le message voyage vraiment.');
+          useCmd('tracert');
+        }
+      }else if(cmd==='ipconfig'){
+        await type(['Configuration IP de Windows','','Carte réseau sans fil Wi-Fi :','   Adresse IPv4. . . . . . . . . . . : 192.168.1.23','   Masque de sous-réseau. . . . . . . : 255.255.255.0','   Passerelle par défaut. . . . . . . : 192.168.1.1'],90);
+        exp('192.168.x.x est une adresse privée : elle n\'existe qu\'à l\'intérieur de chez toi.');
+        exp('La passerelle, c\'est ton routeur (ta box) : la porte de sortie vers Internet.');
+        useCmd('ipconfig');
+      }else if(cmd==='netstat'){
+        await type(['Connexions actives','','  Proto  Adresse locale        Adresse distante      État','  TCP    192.168.1.23:50321   203.0.113.10:443      ESTABLISHED','  TCP    192.168.1.23:50322   203.0.113.55:443      ESTABLISHED','  TCP    192.168.1.23:50410   198.51.100.8:80       TIME_WAIT'],110);
+        exp(':443 veut dire HTTPS (chiffré), :80 HTTP (non chiffré). ESTABLISHED = connexion ouverte en ce moment.');
+        exp('Repère une connexion que tu ne reconnais pas ? C\'est comme ça qu\'on commence une enquête sur sa propre machine.');
+        useCmd('netstat');
+      }else{
+        line('t-err','Commande inconnue : « '+cmd+' ». Tape help.');
+      }
+    }finally{running=false;go.disabled=false;inp.focus();}
+  }
+  form.addEventListener('submit',e=>{e.preventDefault();if(running) return;const v=inp.value;inp.value='';run(v);});
+  const quick=h('div',{class:'row'},...['ping exemple.fr','nslookup exemple.fr','tracert exemple.fr','ipconfig','netstat','help'].map(c=>
+    h('button',{class:'chip',type:'button',onclick:()=>{if(!running) run(c);}},c)));
+  line('t-sim','SIMULATION pédagogique : aucune connexion réelle n\'est faite. Tape help, ou touche une commande ci-dessous.');
+  root.append(
+    h('h3',{text:'Réseau 101'}),
+    h('p',{class:'mut small',html:'Découvre les commandes de base du réseau. Sur <b>ton propre PC</b>, ouvre l\'invite de commandes (touche Windows, tape <code>cmd</code>) et essaie les mêmes : elles ne font que lire des informations. +5 XP à la première utilisation de chaque commande.'}),
+    term,form,quick);
+  return root;
+}
+
+/* ---------- cartes qui tournent ---------- */
+const stage=$('#stage'),kick=$('#kick'),bText=$('#b-text'),bActions=$('#b-actions');
+let cycle=-1,sampleFn=null,ctl=null;
+const KINDS=['help','joke','challenge'];
+const CLAUDE_ERR={not_granted:'Accès à Claude refusé : j\'utilise mes réponses intégrées.',sampling_disabled:'Claude n\'est pas disponible sur ce compte.',rate_limited:'Trop de demandes. Réessaie dans un moment.'};
+function helpText(){
+  const li=levelInfo(S.xp),nl=nextLesson();
+  const arr=TIPS.slice();
+  if(nl) arr.unshift('Ta prochaine mission : « '+nl.title+' » ('+TRACKS[nl.track].name+', environ '+nl.min+' min).'+(li.next?' Il te reste '+li.toNext+' XP avant le niveau '+li.next.n+'.':''));
+  return pick(arr,'help');
+}
+function setChip(kind){$$('.chip[data-kind]').forEach(c=>c.setAttribute('aria-pressed',String(c.dataset.kind===kind)));}
+function setActions(kind,answer,text){
+  bActions.replaceChildren();
+  if(answer){
+    const b=h('button',{class:'btn ghost small',type:'button'},'Voir la réponse');
+    b.addEventListener('click',()=>{bText.textContent=text+'\n';bText.append(h('span',{class:'ans',text:'→ '+answer}));b.remove();});
+    bActions.append(b);
+  }
+  bActions.append(h('button',{class:'btn ghost small',type:'button',onclick:()=>showBubble(kind)},'Une autre'));
+  if(sampleFn) bActions.append(h('button',{class:'btn small',type:'button',onclick:()=>askClaude(kind)},'Réponse de Claude'));
+}
+function showBubble(kind){
+  if(ctl){ctl.abort();ctl=null;}
+  let text,answer=null;
+  if(kind==='help') text=helpText();
+  else if(kind==='joke') text=pick(JOKES,'joke');
+  else{const c=pick(CHALLENGES,'ch');text=c.q;answer=c.a;}
+  bText.textContent=text;setActions(kind,answer,text);setChip(kind);
+  kick.classList.remove('on');void kick.offsetWidth;kick.classList.add('on');
+  setTimeout(()=>kick.classList.remove('on'),950);
+}
+async function askClaude(kind){
+  if(!sampleFn) return;
+  if(ctl) ctl.abort();
+  const my=ctl=new AbortController();
+  bText.textContent='Claude réfléchit…';
+  const li=levelInfo(S.xp),nl=nextLesson(),nd=Object.keys(S.done).length;
+  const ctx='Niveau '+li.cur.n+' ('+li.cur.name+'), '+S.xp+' XP, '+nd+' missions terminées sur '+LESSONS.length+'.'+(nl?' Prochaine mission : « '+nl.title+' » ('+TRACKS[nl.track].name+').':'');
+  const ask=kind==='joke'?'Raconte une blague courte, tout public, sur la programmation, le blackjack ou la cybersécurité défensive.'
+    :kind==='challenge'?'Propose une petite question de réflexion adaptée à un grand débutant, puis donne la réponse après la mention « Réponse : ».'
+    :'Donne un conseil concret et bref pour la suite de son apprentissage.';
+  const prompt='Tu es la mascotte d\'une académie de programmation pour grands débutants, au thème casino (Black Jack) et hacker éthique. Réponds en français, en 3 phrases maximum, avec un ton complice et encourageant, sans emoji ni mise en forme.\n'+ask+'\nContexte de l\'élève : '+ctx;
+  try{
+    const r=await sampleFn(prompt,{modelTier:'quick',cache:false,signal:my.signal,onText:({text})=>{if(ctl===my) bText.textContent=text;}});
+    if(ctl===my) bText.textContent=r.text.trim();
+  }catch(e){
+    if(ctl!==my||(e&&e.code==='cancelled')) return;
+    const code=e&&e.code;
+    bText.textContent=CLAUDE_ERR[code]||'Claude n\'a pas pu répondre. Réessaie dans un instant.';
+    if(code==='not_granted'||code==='sampling_disabled'||code==='not_declared'||code==='capability_disabled'||code==='capability_removed'){sampleFn=null;setActions(kind,null,'');}
+  }
+}
+function tapCards(){cycle=(cycle+1)%KINDS.length;showBubble(KINDS[cycle]);}
+stage.addEventListener('click',tapCards);
+stage.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();tapCards();}});
+$$('.chip[data-kind]').forEach(c=>c.addEventListener('click',()=>{cycle=KINDS.indexOf(c.dataset.kind);showBubble(c.dataset.kind);}));
+
+/* ---------- décor : binaire et journal ---------- */
+(function(){
+  let s='';for(let r=0;r<34;r++){let row='';for(let c=0;c<110;c++) row+=Math.random()<.5?'0':'1';s+=row+'\n';}
+  $('#binary').textContent=s;
+})();
+const logEl=$('#log');
+const AMBIENT=['mélange du sabot … OK','table prête','chiffrement César … OK','pare-feu local … actif','compilation … 0 erreur','coffre-fort … verrouillé','sauvegarde … à jour','mot de passe long = solide','réseau … stable','carte tirée : A♠','croupier tire jusqu\'à 17','mises à jour … faites','double authentification … ON'];
+function pushLog(msg,ev){
+  const t=new Date().toTimeString().slice(0,8);
+  logEl.append(h('div',{class:ev?'ev':'',text:t+'  '+msg}));
+  while(logEl.children.length>12) logEl.firstChild.remove();
+}
+function logEvent(msg){pushLog(msg,true);}
+for(let i=0;i<9;i++) pushLog(AMBIENT[(i*3)%AMBIENT.length]);
+setInterval(()=>{if(!document.hidden) pushLog(AMBIENT[Math.floor(Math.random()*AMBIENT.length)]);},reduce?4500:1800);
+
+/* ---------- branchements ---------- */
+$('#go-next').addEventListener('click',()=>{const n=nextLesson();if(n) openLesson(n.id);});
+['labo','net','pwd'].forEach(k=>$('#tab-'+k).addEventListener('click',()=>selectTab(k)));
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('#lesson').hidden) showView('home');});
+
+/* ---------- démarrage ---------- */
+const saved=loadLocal();if(saved) S=saved;
+$('#pan-labo').append(buildLab());
+$('#pan-net').append(buildNet());
+$('#pan-pwd').append(h('h3',{text:'Testeur de mot de passe'}),buildPwd('tool'));
+renderAll();
+(async()=>{
+  try{if(window.claude&&claude.use){sampleFn=await claude.use('sample');}}catch(e){sampleFn=null;}
+  if(sampleFn&&bActions.children.length) setActions(KINDS[Math.max(cycle,0)],null,'');
+})();
+initCloud();
+})();
+</script>
