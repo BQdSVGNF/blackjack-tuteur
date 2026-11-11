@@ -133,23 +133,46 @@ def effacer():
     _ecrire(BASE + "\x1b[2J\x1b[H")
 
 
+def _agrandir_windows():
+    """Console Windows héritée (conhost) : remplit TOUT l'écran. On met le buffer
+    ET la fenêtre à la taille maximale qui tient à l'écran (au font courant)."""
+    import ctypes
+    k32, u32 = ctypes.windll.kernel32, ctypes.windll.user32
+
+    class _COORD(ctypes.Structure):
+        _fields_ = [("X", ctypes.c_short), ("Y", ctypes.c_short)]
+
+    class _RECT(ctypes.Structure):
+        _fields_ = [("Left", ctypes.c_short), ("Top", ctypes.c_short),
+                    ("Right", ctypes.c_short), ("Bottom", ctypes.c_short)]
+
+    hout = k32.GetStdHandle(-11)                    # STD_OUTPUT_HANDLE
+    k32.GetLargestConsoleWindowSize.restype = _COORD
+    maxs = k32.GetLargestConsoleWindowSize(hout)    # taille max qui tient à l'écran
+    cols = min(max(maxs.X - 1, 10), 400) if maxs.X > 10 else 200   # borné (évite valeurs folles)
+    lines = min(max(maxs.Y - 1, 5), 160) if maxs.Y > 5 else 52
+    # on AGRANDIT : buffer d'abord (>= fenêtre actuelle, donc sûr), puis la fenêtre.
+    # (Pas d'étape « fenêtre minuscule » : si un appel échouait, on resterait coincé.)
+    k32.SetConsoleScreenBufferSize(hout, _COORD(cols, lines))
+    k32.SetConsoleWindowInfo(hout, True, ctypes.byref(_RECT(0, 0, cols - 1, lines - 1)))
+    hwnd = k32.GetConsoleWindow()
+    if hwnd:
+        u32.ShowWindow(hwnd, 3)                     # SW_MAXIMIZE (remplit l'écran)
+
+
 def agrandir_fenetre():
-    """Ouvre le tool EN GRAND : on maximise la fenêtre du terminal au lancement
-    (plus de place = œil plus grand). Best-effort, silencieux si ça échoue.
-      · Windows (conhost) : ShowWindow(SW_MAXIMIZE) sur la fenêtre de la console ;
-      · xterm / Windows Terminal / VS Code… : séquence \x1b[9;1t (maximise)."""
+    """Ouvre le tool EN GRAND au lancement (plus de place = œil plus grand).
+    Best-effort, silencieux si ça échoue (on ne casse jamais le démarrage) :
+      · Windows conhost : buffer + fenêtre à la taille max de l'écran ;
+      · Windows Terminal / xterm / VS Code… : séquence \x1b[9;1t (maximise)."""
+    if os.name == "nt":
+        try:
+            _agrandir_windows()
+        except Exception:
+            pass
     try:
-        if os.name == "nt":
-            import ctypes
-            k32, u32 = ctypes.windll.kernel32, ctypes.windll.user32
-            hwnd = k32.GetConsoleWindow()
-            if hwnd:
-                u32.ShowWindow(hwnd, 3)        # 3 = SW_MAXIMIZE
-    except Exception:
-        pass
-    try:
-        _ecrire("\x1b[9;1t")                   # maximise (terminaux type xterm)
-        time.sleep(0.06)                        # laisse la fenêtre s'ajuster
+        _ecrire("\x1b[9;1t")                   # maximise (terminaux type xterm / WT)
+        time.sleep(0.05)                        # laisse la fenêtre s'ajuster
     except Exception:
         pass
 
@@ -366,22 +389,18 @@ def _montrer_curseur():
 
 
 def _crt(grille, f):
-    """Ajoute un effet CRT : scanlines fixes + barre de balayage qui roule."""
+    """Ajoute un effet CRT léger : scanlines fixes (immobiles). Pas de barre
+    roulante : elle réémettait des lignes entières à chaque image (coûteux sur
+    la console Windows, d'où les ralentissements)."""
     if not CRT or not grille:
         return grille
     H, W = len(grille), len(grille[0])
-    for y in range(0, H, 3):                     # scanlines discrètes
+    scan = _txt(13, 28, 32)
+    for y in range(0, H, 3):                     # scanlines discrètes et STABLES
         row = grille[y]
         for x in range(W):
             if row[x][0] == " " and row[x][1] is None:
-                row[x] = ("─", _txt(13, 28, 32), None)
-    bar = (f * 2) % (H + 6) - 3                   # barre lumineuse qui descend
-    for yy in (bar, bar + 1):
-        if 0 <= yy < H:
-            row = grille[yy]
-            for x in range(W):
-                if row[x][0] in (" ", "─") and (row[x][1] is None or row[x][1] == _txt(13, 28, 32)):
-                    row[x] = ("─", _txt(28, 58, 64), None)
+                row[x] = ("─", scan, None)
     return grille
 
 
@@ -390,19 +409,13 @@ _intro_offset = 0          # marge gauche pour centrer l'intro dans la fenêtre
 _intro_voffset = 0         # marge haute pour centrer l'intro dans la fenêtre
 
 
-def _rendu_grille(grille):
-    """Transforme une grille de (char, fg, bg) en une image terminal (+ CRT).
-    L'image (de taille W×H) est centrée dans le terminal réel via les marges
-    _intro_offset (gauche) et _intro_voffset (haut), pour qu'elle ne se colle
-    pas en haut à gauche quand la fenêtre est agrandie."""
-    global _crt_f
-    grille = _crt(grille, _crt_f)
-    _crt_f += 1
-    dec = " " * _intro_offset
+def _rendu_depuis(g, vo=0, ho=0):
+    """Image PLEIN ÉCRAN à partir d'une grille FINALE (CRT déjà posé)."""
+    dec = " " * ho
     out = ["\x1b[H"]
-    for _ in range(_intro_voffset):              # lignes vides au-dessus (centrage vertical)
+    for _ in range(vo):                          # lignes vides au-dessus (centrage vertical)
         out.append(BASE + "\x1b[K\n")
-    for rangee in grille:
+    for rangee in g:
         morceaux = [BASE, dec]
         cfg = cbg = None
         for ch, fg, bg in rangee:
@@ -415,6 +428,68 @@ def _rendu_grille(grille):
             morceaux.append(ch)
         out.append("".join(morceaux) + BASE + "\x1b[K\n")
     return "".join(out)
+
+
+def _rendu_grille(grille):
+    """Transforme une grille de (char, fg, bg) en une image terminal plein écran
+    (+ CRT), centrée via _intro_offset / _intro_voffset."""
+    global _crt_f
+    g = _crt(grille, _crt_f)
+    _crt_f += 1
+    return _rendu_depuis(g, _intro_voffset, _intro_offset)
+
+
+_fb_prev = None          # dernier cadre émis (cellules finales), pour le rendu différentiel
+
+
+def _reinit_cadre():
+    """À appeler après un effacement d'écran : le prochain cadre sera plein."""
+    global _fb_prev
+    _fb_prev = None
+
+
+def _emettre(grille):
+    """Rendu DIFFÉRENTIEL : n'émet que les cellules qui ont changé depuis le dernier
+    cadre (repositionnement du curseur). INDISPENSABLE sur la console Windows :
+    repeindre tout l'écran en 24 bits à chaque image la fait ramer/figer. Le 1er
+    cadre (ou après _reinit_cadre) est plein écran."""
+    global _fb_prev, _crt_f
+    g = _crt(grille, _crt_f)
+    _crt_f += 1
+    H = len(g)
+    W = len(g[0]) if H else 0
+    vo, ho = _intro_voffset, _intro_offset
+    if _fb_prev is None or len(_fb_prev) != H or (H and len(_fb_prev[0]) != W):
+        _fb_prev = [row[:] for row in g]
+        return _rendu_depuis(g, vo, ho)          # plein écran
+    prev = _fb_prev
+    out = []
+    for y in range(H):
+        row = g[y]
+        prow = prev[y]
+        if row == prow:                          # ligne inchangée → rien à émettre
+            continue
+        x = 0
+        while x < W:
+            if row[x] != prow[x]:
+                xs = x
+                seg = ["\x1b[%d;%dH" % (y + 1 + vo, xs + 1 + ho), BASE]
+                cfg = cbg = None
+                while x < W and row[x] != prow[x]:
+                    ch, fg, bg = row[x]
+                    dfg = fg or TEXTE
+                    dbg = bg or FOND
+                    if dfg != cfg:
+                        seg.append(dfg); cfg = dfg
+                    if dbg != cbg:
+                        seg.append(dbg); cbg = dbg
+                    seg.append(ch)
+                    x += 1
+                out.append("".join(seg))
+            else:
+                x += 1
+    _fb_prev = [row[:] for row in g]
+    return ("".join(out) + BASE) if out else ""
 
 
 CARS_PLUIE = "01010110¦:+*=<>/\\!?#$%&01"
@@ -495,8 +570,15 @@ class _Clavier:
                 while self.msvcrt.kbhit():
                     ch = self.msvcrt.getwch()
                     if ch in ("\x00", "\xe0"):            # flèche/F../Inser… (console héritée)
-                        if self.msvcrt.kbhit():
-                            self.msvcrt.getwch()          # on jette le code qui suit
+                        # un préfixe de touche spéciale est TOUJOURS suivi d'un code :
+                        # on l'attend (jusqu'à ~40 ms) et on le JETTE, sans se fier à
+                        # kbhit() qui peut répondre False juste après le préfixe (sinon
+                        # le code — H/P/K/M pour les flèches — polluerait la saisie).
+                        for _ in range(40):
+                            if self.msvcrt.kbhit():
+                                self.msvcrt.getwch()
+                                break
+                            time.sleep(0.001)
                         continue
                     out.append(ch)
                 return "".join(out)
@@ -975,7 +1057,7 @@ def _intro_cartes(W, H, kb):
             _poser_centre(grille, W, H, rcap, cap1, cc1)
         if p > 0.55:
             _poser_centre(grille, W, H, rcap + 1, cap2, cc2)
-        _ecrire(_rendu_grille(grille))
+        _ecrire(_emettre(grille))
 
     frames = 94
     tours = 3.0
@@ -1002,6 +1084,7 @@ def _intro_cartes(W, H, kb):
             break
         time.sleep(0.02)
     _ecrire(BASE + "\x1b[2J\x1b[H")
+    _reinit_cadre()                                  # l'écran est effacé → prochain cadre plein
     return None
 
 
@@ -1011,7 +1094,7 @@ def _oeil_ouverture(W, H, kb):
     cx, cy, Wx, Hy, Ri, _, _ = _oeil_geo(W, H)
     cles = [(0.00, 0.0), (0.10, 0.0), (0.16, 0.60), (0.22, 0.05), (0.31, 0.72),
             (0.37, 0.06), (0.50, 1.0), (0.70, 1.0), (0.74, 0.14), (0.80, 1.0), (1.0, 1.0)]
-    frames = 96
+    frames = 66                                      # moins d'images = moins de charge console
     for f in range(frames):
         t = f / (frames - 1)
         ouv = _interp(t, cles)
@@ -1024,11 +1107,11 @@ def _oeil_ouverture(W, H, kb):
         dil = 1.0 + 0.05 * math.sin(f * 0.22)
         grille = _nouvelle_grille(W, H)
         _dessiner_oeil(grille, W, H, ouv, gx, gy, dil, f)
-        _ecrire(_rendu_grille(grille))
+        _ecrire(_emettre(grille))
         k = kb.get()
         if k:
             return k
-        time.sleep(0.010)
+        time.sleep(0.018)
     return None
 
 
@@ -1045,7 +1128,7 @@ def _oeil_revele(W, H, slogan, kb):
         _poser_slogan(grille, W, H, aff)
         if p > 0.5:
             _poser_invite(grille, W, H, allume=True)
-        _ecrire(_rendu_grille(grille))
+        _ecrire(_emettre(grille))
         k = kb.get()
         if k:
             return k
@@ -1078,7 +1161,7 @@ def _oeil_frisson(W, H, slogan, kb):
         _poser_as_coins(grille, W, H)
         _poser_slogan(grille, W, H, slogan)
         _poser_invite(grille, W, H, allume=True)
-        _ecrire(_rendu_grille(grille))
+        _ecrire(_emettre(grille))
         k = kb.get()
         if k:
             return k
@@ -1088,6 +1171,7 @@ def _oeil_frisson(W, H, slogan, kb):
 
 def _oeil_zoom(W, H):
     """Transition : la caméra plonge dans la pupille (le noir envahit l'écran)."""
+    _reinit_cadre()                                  # on vient d'une phase quelconque
     cx, cy, Wx, Hy, Ri, _, _ = _oeil_geo(W, H)
     maxr = math.hypot(W / _ASP, H) + 2
     noir = _fond(2, 3, 8)
@@ -1107,39 +1191,44 @@ def _oeil_zoom(W, H):
                 rowg = grille[y]
                 for x in range(max(int(cx - demi), 0), min(int(cx + demi) + 1, W)):
                     rowg[x] = (" ", None, noir)
-        _ecrire(_rendu_grille(grille))
+        _ecrire(_emettre(grille))
         time.sleep(0.03)
     _ecrire(BASE + "\x1b[2J\x1b[H")
+    _reinit_cadre()
 
 
 def _oeil_attente(W, H, slogan, kb):
-    """L'œil reste vivant (clignements, micro-regard), les deux as tournent
-    lentement dans les coins, et on attend ENTRÉE / ÉCHAP."""
-    cx, cy, Wx, Hy, Ri, _, _ = _oeil_geo(W, H)
+    """L'œil reste VIVANT mais ÉCONOME : il tient son regard immobile (rendu nul),
+    et ne se redessine que lors d'un clignement, d'une saccade ou du pouls de
+    l'invite. Indispensable pour ne pas saturer la console pendant l'attente."""
     f = 0
-    prochain_clin = random.randint(55, 110)
     clin = [0.55, 0.12, 0.0, 0.0, 0.15, 0.55, 1.0]
+    prochain_clin = random.randint(90, 180)
+    invite_on = True
+    besoin = True                                    # redessiner ce tour ?
     while True:
         ouv = 1.0
         bf = f - prochain_clin
-        if 0 <= bf < len(clin):
-            ouv = clin[bf]
-        elif bf >= len(clin):
-            prochain_clin = f + random.randint(55, 130)
-        gx = (Wx * 0.09) * math.sin(f * 0.040)
-        gy = (Hy * 0.06) * math.sin(f * 0.029 + 0.5)
-        dil = 1.0 + 0.07 * math.sin(f * 0.11)
-        grille = _nouvelle_grille(W, H)
-        _dessiner_oeil(grille, W, H, ouv, gx, gy, dil, f)
-        _poser_as_coins(grille, W, H, f * 0.028, -f * 0.028)   # as qui tournent doucement
-        _poser_slogan(grille, W, H, slogan)
-        _poser_invite(grille, W, H, allume=(f // 7) % 2 == 0)   # l'invite pulse doucement
-        _ecrire(_rendu_grille(grille))
+        if 0 <= bf < len(clin):                      # clignement en cours
+            ouv = clin[bf]; besoin = True
+        elif bf == len(clin):                        # fin du clignement → œil rouvert
+            prochain_clin = f + random.randint(110, 240); besoin = True
+        on = (f // 11) % 2 == 0                       # pouls de l'invite (~1 s)
+        if on != invite_on:
+            invite_on = on; besoin = True
+        if besoin:                                    # on NE dessine QUE si quelque chose bouge
+            grille = _nouvelle_grille(W, H)
+            _dessiner_oeil(grille, W, H, ouv, 0.0, 0.0, 1.0, f)   # regard fixe : il te FIXE
+            _poser_as_coins(grille, W, H)             # as fixes (sceau white/black hat)
+            _poser_slogan(grille, W, H, slogan)
+            _poser_invite(grille, W, H, allume=invite_on)
+            _ecrire(_emettre(grille))
+            besoin = False
         k = kb.get()
         if k in ("enter", "esc"):
             return k
         f += 1
-        time.sleep(0.045)
+        time.sleep(0.05)
 
 
 def _accueil_oeil(modele):
@@ -1148,6 +1237,7 @@ def _accueil_oeil(modele):
     ÉCHAP quitte. True = entrer, False = quitter."""
     global _intro_offset, _intro_voffset, _oeil_seed
     _intro_offset = _intro_voffset = 0
+    _reinit_cadre()                                  # premier cadre = plein écran
     taille = _Taille()
     W = max(min(taille.columns - 1, 400), 40)
     H = max(min(taille.lines - 1, 160), 16)
@@ -1621,7 +1711,7 @@ def saisie_menu():
                     elif quoi == "char":
                         texte.append(ev[1])
                 f += 1
-                time.sleep(0.06)
+                time.sleep(0.09)                      # cadence plus douce (fenêtre agrandie)
     finally:
         _montrer_curseur()
 
