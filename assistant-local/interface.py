@@ -1668,7 +1668,9 @@ def _composer_menu(modele):
     menu central encadré par les panneaux MONITEUR et RÉSEAU, invite."""
     global _ligne_horloge, _col_horloge, _ip_cache, _sys_col, _sys_row0, _sys_inner
     taille = _Taille()
-    W = max(min(taille.columns - 1, 400), 2 * LARGEUR_BOITE + 3)   # la pluie remplit toute la largeur
+    # la pluie remplit toute la largeur ; jamais plus étroit que le logo (sinon
+    # sa pose déborderait de la grille sur une fenêtre très étroite)
+    W = max(min(taille.columns - 1, 400), 2 * LARGEUR_BOITE + 3, LOGO_COLS)
     if not _ip_cache:
         _ip_cache = _ip_locale()
     centre_w = 2 * LARGEUR_BOITE + 3
@@ -1686,13 +1688,15 @@ def _composer_menu(modele):
     sections = [
         ("♠ TABLE · L'IA", [("1", "Discuter (tape ton message)"), ("2", "Recherche web sourcée"),
                             ("3", "CODEX · coder (C++, Python…)"),
-                            ("4", "Nouvelle partie (reset mémoire)")], C_PIQUE),
+                            ("4", "Nouvelle partie (reset mémoire)"),
+                            ("16", "Académie (apprendre à coder)")], C_PIQUE),
         ("♥ BLACK JACK · 21", [("15", "JOUER · partie de Black Jack"), ("5", "Table de stratégie"),
                                ("6", "Entraîneur Hi-Lo (compter)"),
                                ("7", "Quiz : que faire ?")], C_COEUR),
         ("♦ SYSTÈME · ma machine", [("8", "Infos système"), ("9", "Espace disque"),
                                     ("10", "Lancer un programme"),
-                                    ("14", "Paramètres (IA, Spotify, son…)")], C_CARREAU),
+                                    ("14", "Paramètres (IA, Spotify, son…)"),
+                                    ("17", "Optimisation (nettoyage)")], C_CARREAU),
         ("♣ RÉSEAU · ma connexion", [("11", "Mon adresse IP"), ("12", "Tester ma connexion (ping)"),
                                      ("13", "Mes connexions actives")], C_TREFLE),
     ]

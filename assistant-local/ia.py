@@ -16,6 +16,7 @@ import urllib.request
 import entrainement
 import interface as ui
 import jeu
+import optimisation
 
 # On parle à Ollama par son API HTTP locale (pas de module à installer, donc
 # rien que le « Contrôle intelligent des applications » de Windows puisse bloquer).
@@ -526,6 +527,29 @@ def main():
         ui.ecran_sortie()                # revient toujours à l'écran normal du terminal
 
 
+def ouvrir_academie():
+    """Ouvre la page « Black Jack Académie » (academie/index.html) dans le
+    navigateur par défaut. Page autonome : fonctionne hors-ligne, sans compte."""
+    from pathlib import Path
+    import webbrowser
+    chemin = Path(__file__).resolve().parent / "academie" / "index.html"
+    ui.debut_conversation("ACADÉMIE", droite="")
+    if not chemin.is_file():
+        ui.erreur("Fichier introuvable : academie/index.html "
+                   "(il doit être à côté de ia.py).")
+        ui.attendre_touche()
+        return
+    ui.info("\n  Ouverture de l'Académie dans ton navigateur…", ui.CYAN)
+    ouvert = False
+    try:
+        ouvert = webbrowser.open(chemin.as_uri())
+    except Exception as e:
+        ui.erreur(f"Impossible d'ouvrir le navigateur : {e}")
+    if not ouvert:
+        ui.info(f"  Ouvre ce fichier toi-même :\n  {chemin}", ui.DISCRET)
+    ui.attendre_touche("Appuie sur une touche pour revenir au menu")
+
+
 def _ecran_dedie(fonction, conf):
     """Lance un écran dédié (jeu, entraîneurs, table de stratégie), puis revient au menu.
     Une erreur ou un Ctrl+C ici ne ferme jamais le programme."""
@@ -577,6 +601,12 @@ def _boucle(historique, conf):
             continue
         if saisie == "7" or saisie.lower() in ("quiz",):
             _ecran_dedie(entrainement.quiz, conf)                # quiz « que faire ? »
+            continue
+        if saisie == "16" or saisie.lower() in ("academie", "académie"):
+            _ecran_dedie(ouvrir_academie, conf)                  # page web d'apprentissage
+            continue
+        if saisie == "17" or saisie.lower() in ("optimisation", "optimiser"):
+            _ecran_dedie(lambda: optimisation.menu(conf), conf)  # nettoyage, démarrage
             continue
         if ui.sur_menu:                  # 1re sortie du menu → écran propre (style conversation)
             est_ia = saisie in ("1", "3") or RACCOURCIS.get(saisie, ("",))[0] == "prompt" \
