@@ -49,8 +49,9 @@ rem Télécharge le modèle la première fois (environ 4,9 Go)
 echo Préparation de la table Black Jack...
 ollama list | find /i "%BASE%" >nul || ollama pull %BASE%
 
-rem Ouvre la console EN GRAND (plancher de taille ; le programme la maximise ensuite)
-mode con: cols=170 lines=45 >nul 2>nul
+rem Plancher de taille (sans risque de barre de defilement) ; le programme
+rem agrandit ensuite la console a la taille reelle de l'ecran.
+mode con: cols=140 lines=40 >nul 2>nul
 
 cls
 python ia.py
