@@ -369,10 +369,19 @@ def _lignes_logo_teinte(deg):
     return lignes
 
 
+def _cells_logo_teinte(deg):
+    """Le logo en CELLULES (char, fg, bg) pour la teinte `deg` — pour le rendu
+    différentiel du menu (on compare cellule par cellule)."""
+    return [[("▀", _txt(*_teinte(LOGO[2 * cr][x], deg)), _fond(*_teinte(LOGO[2 * cr + 1][x], deg)))
+             for x in range(LOGO_COLS)] for cr in range(LOGO_ROWS)]
+
+
 # On pré-calcule les variantes de teinte (le titre cyclera à travers tout l'arc-en-ciel).
 _PAS_TEINTE = 48
 _LOGO_TEINTES = ([_lignes_logo_teinte(i * 360 // _PAS_TEINTE) for i in range(_PAS_TEINTE)]
                  if LOGO_COLS else [])
+_LOGO_CELLS = ([_cells_logo_teinte(i * 360 // _PAS_TEINTE) for i in range(_PAS_TEINTE)]
+               if LOGO_COLS else [])
 
 
 def banniere():
@@ -1626,18 +1635,35 @@ def _poser_entete(grille, W, modele):
             row0[mx + i] = [ch, cpt if ch in "●○" else _txt(150, 165, 188), BAR_BG]
 
 
+_menu_prev = None          # dernier cadre du menu émis (cellules finales), pour le diff
+
+
+def _menu_reinit():
+    """Force un repeint complet du menu au prochain appel (après un effacement)."""
+    global _menu_prev
+    _menu_prev = None
+
+
 def _repaint_menu(i_teinte, tetes, f):
-    """Repeint les lignes du menu : pluie dans les cases vides + titre teinté +
-    les deux as qui tournent au centre, sans toucher la ligne de saisie."""
-    _animer_cartes_centre(f)                     # fait tourner les as (A♣ + A♠)
+    """Repeint le menu en DIFFÉRENTIEL : pluie + titre teinté + les deux as qui
+    tournent, MAIS on ne réémet QUE les cellules qui changent. Sans effacement de
+    ligne → plus de scintillement ni de déchirure (le problème sur Windows Terminal)."""
+    global _menu_prev
+    _animer_cartes_centre(f)                      # fait tourner les as (A♣ + A♠)
     W = len(_grille_menu[0])
-    buf = ["\x1b7"]
     dec = _menu_offset
+    logo = _LOGO_CELLS[i_teinte] if _LOGO_CELLS else None
+    # 1) construit la grille FINALE (menu + pluie + logo teinté + cartes)
+    final = []
     for ry in range(_menu_bas):
         row = _grille_menu[ry]
-        bout = [f"\x1b[{ry + 1};1H" + BASE + "\x1b[K" + " " * dec]
-        cfg = cbg = None
+        in_logo = _titre_haut <= ry < _titre_haut + LOGO_ROWS and logo is not None
+        lrow = logo[ry - _titre_haut] if in_logo else None
+        frow = []
         for x in range(W):
+            if lrow is not None and _titre_marge <= x < _titre_marge + LOGO_COLS:
+                frow.append(lrow[x - _titre_marge])
+                continue
             ch, fg, bg = row[x]
             if ch == " " and fg is None and bg is None and tetes is not None:   # case vide → pluie ?
                 k = int(tetes[x][0]) - ry
@@ -1648,22 +1674,41 @@ def _repaint_menu(i_teinte, tetes, f):
                     else:
                         v = 1 - k / tetes[x][2]
                         dfg = _txt(int(22 + 50 * v), int(60 + 105 * v), int(40 + 65 * v))
-                    dbg = FOND
+                    frow.append((ch2, dfg, FOND))
                 else:
-                    ch2, dfg, dbg = " ", TEXTE, FOND
+                    frow.append((" ", TEXTE, FOND))
             else:
-                ch2, dfg, dbg = ch, (fg or TEXTE), (bg or FOND)
-            if dfg != cfg:
-                bout.append(dfg); cfg = dfg
-            if dbg != cbg:
-                bout.append(dbg); cbg = dbg
-            bout.append(ch2)
-        buf.append("".join(bout))
-        if _titre_haut <= ry < _titre_haut + LOGO_ROWS:   # superpose le logo cyclé (pluie derrière)
-            ligne = _LOGO_TEINTES[i_teinte][ry - _titre_haut]
-            buf.append(f"\x1b[{ry + 1};{1 + dec + _titre_marge}H" + BASE + ligne)
-    buf.append("\x1b8")
-    return "".join(buf)
+                frow.append((ch, fg or TEXTE, bg or FOND))
+        final.append(frow)
+    # 2) diff contre le cadre précédent → n'émet que ce qui a changé
+    prev = _menu_prev
+    plein = prev is None or len(prev) != _menu_bas or (W and len(prev[0]) != W)
+    out = ["\x1b7"]                               # sauve le curseur (ligne de saisie)
+    for ry in range(_menu_bas):
+        frow = final[ry]
+        prow = None if plein else prev[ry]
+        if prow is not None and prow == frow:
+            continue
+        x = 0
+        while x < W:
+            if plein or frow[x] != prow[x]:
+                xs = x
+                seg = ["\x1b[%d;%dH" % (ry + 1, xs + dec + 1), BASE]
+                cfg = cbg = None
+                while x < W and (plein or frow[x] != prow[x]):
+                    ch, fg, bg = frow[x]
+                    if fg != cfg:
+                        seg.append(fg); cfg = fg
+                    if bg != cbg:
+                        seg.append(bg); cbg = bg
+                    seg.append(ch)
+                    x += 1
+                out.append("".join(seg))
+            else:
+                x += 1
+    out.append("\x1b8")                           # restaure le curseur
+    _menu_prev = final
+    return "".join(out)
 
 
 class _Pulsation(threading.Thread):
@@ -1731,6 +1776,7 @@ def arreter_pulsation():
         _pulse.join()
         _pulse = None
         if _grille_menu:
+            _menu_reinit()
             _ecrire(_repaint_menu(0, None, 0))   # menu net, sans pluie
 
 
@@ -2166,6 +2212,7 @@ def afficher_menu(modele):
     _modele_menu = modele
     _taille_menu = (taille.columns, taille.lines)
     _menu_offset = max((taille.columns - len(grille[0])) // 2, 0)   # centre le menu
+    _menu_reinit()                                 # le prochain repeint sera complet
     dec = " " * _menu_offset
     out = [BASE + "\x1b[2J\x1b[H"]
     for row in grille:
