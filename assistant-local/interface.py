@@ -141,12 +141,16 @@ def initialiser():
     except Exception:
         pass
     _ecrire("\x1b[?1049h")            # écran alternatif
+    # coupe tout rapport de souris/molette et le collage encadré : en écran
+    # alternatif, la molette enverrait sinon des séquences qui polluent la saisie.
+    _ecrire("\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?1015l\x1b[?2004l")
     _ecrire(BASE + "\x1b[2J\x1b[H")
 
 
 def restaurer():
     """Revient à l'écran normal du terminal (fin propre, sans logos résiduels)."""
     _ecrire("\x1b[?25h")             # réaffiche le curseur
+    _ecrire("\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?1015l\x1b[?2004l")
     _ecrire(BASE + "\x1b[2J\x1b[H")
     _ecrire("\x1b[?1049l")           # quitte l'écran alternatif
     _ecrire(RESET)
@@ -416,6 +420,8 @@ class _Clavier:
     def __enter__(self):
         self.nt = (os.name == "nt")
         self.ok = False
+        self._buf = ""                       # séquence d'échappement en attente (fragment)
+        self._esc_hold = 0                   # ESC seul en attente d'une éventuelle suite
         try:
             if self.nt:
                 import msvcrt
@@ -452,86 +458,119 @@ class _Clavier:
         except Exception:
             pass
 
-    def get(self):
-        if not self.ok:
-            return None
-        try:
-            if self.nt:
-                res = None
+    def _lire_bruts(self):
+        """Renvoie les caractères bruts disponibles (non bloquant). Les séquences
+        d'échappement (flèches, souris/molette) arrivent en rafale : si les
+        données finissent par ESC, on attend ~15 ms la suite pour l'avoir entière
+        et pouvoir l'écarter proprement (sinon ses chiffres pollueraient la saisie).
+        Côté Windows, les touches spéciales à préfixe \\x00/\\xe0 sont jetées ici."""
+        if self.nt:
+            def _lot():
+                out = []
                 while self.msvcrt.kbhit():
                     ch = self.msvcrt.getwch()
-                    if ch in ("\x00", "\xe0"):           # touche spéciale (flèche…)
+                    if ch in ("\x00", "\xe0"):            # flèche/F../Inser… (console héritée)
                         if self.msvcrt.kbhit():
-                            self.msvcrt.getwch()
+                            self.msvcrt.getwch()          # on jette le code qui suit
                         continue
-                    if ch in ("\r", "\n"):
-                        res = "enter"
-                    elif ch == "\x1b":
-                        res = "esc"
-                    elif ch == "\x03":
-                        raise KeyboardInterrupt
-                return res
-            import select
-            r, _, _ = select.select([self.fd], [], [], 0)
-            if not r:
-                return None
-            ch = os.read(self.fd, 1)
-            if ch in (b"\r", b"\n"):
-                return "enter"
-            if ch == b"\x03":
-                raise KeyboardInterrupt
-            if ch == b"\x1b":
-                r2, _, _ = select.select([self.fd], [], [], 0.02)
-                if r2:
-                    os.read(self.fd, 2)                   # avale une séquence de flèche
-                    return None
-                return "esc"
-            return None
-        except KeyboardInterrupt:
-            raise
-        except Exception:
-            return None
+                    out.append(ch)
+                return "".join(out)
+            s = _lot()
+            if s.endswith("\x1b"):                        # VT : flèche = ESC [ … ; on attend la fin
+                time.sleep(0.015)
+                s += _lot()
+            return s
+        import select
+        r, _, _ = select.select([self.fd], [], [], 0)
+        if not r:
+            return ""
+        s = os.read(self.fd, 1024).decode("utf-8", "ignore")
+        if s.endswith("\x1b"):
+            r2, _, _ = select.select([self.fd], [], [], 0.015)
+            if r2:
+                s += os.read(self.fd, 1024).decode("utf-8", "ignore")
+        return s
+
+    @staticmethod
+    def _analyser_echap(s, i):
+        """Analyse l'ESC à l'indice i. Renvoie :
+        None          -> on ne sait pas encore (séquence incomplète / ESC en fin) ;
+        ('esc', j)    -> Échap isolé (le reste du buffer sera lu normalement) ;
+        ('seq', j)    -> séquence à JETER (flèche, molette/souris, F.., clavier num.),
+                         j = indice juste après. Couvre CSI (ESC [ … octet final
+                         0x40-0x7E, rapports souris ESC [ < … M/m inclus) et SS3 (ESC O x)."""
+        n = len(s)
+        if i + 1 >= n:
+            return None                                   # juste ESC pour l'instant
+        c = s[i + 1]
+        if c == "[":
+            if i + 2 < n and s[i + 2] == "M":             # souris X10 : ESC [ M + 3 octets bruts
+                return ("seq", i + 6) if i + 5 < n else None
+            k = i + 2
+            while k < n and "\x20" <= s[k] <= "\x3f":     # paramètres + octets intermédiaires
+                k += 1
+            if k < n and "\x40" <= s[k] <= "\x7e":        # octet final
+                return ("seq", k + 1)
+            return None                                   # CSI pas encore complet
+        if c == "O":
+            return ("seq", i + 3) if i + 2 < n else None
+        return ("esc", i + 1)                             # ESC + autre : vrai Échap
 
     def evenements(self):
         """Lit TOUTES les touches dispo (non bloquant) pour un éditeur de ligne.
         Renvoie une liste d'événements : ('char', c) / ('enter',) / ('back',) /
-        ('esc',) / ('ctrl-c',)."""
+        ('esc',) / ('ctrl-c',). Flèches et molette sont silencieusement ignorées."""
         evs = []
         if not self.ok:
             return evs
         try:
-            if self.nt:
-                while self.msvcrt.kbhit():
-                    ch = self.msvcrt.getwch()
-                    if ch in ("\x00", "\xe0"):               # touche spéciale (flèche…)
-                        if self.msvcrt.kbhit():
-                            self.msvcrt.getwch()
-                        continue
-                    evs.append(self._classer(ch))
-                return evs
-            import select
-            r, _, _ = select.select([self.fd], [], [], 0)
-            if not r:
-                return evs
-            data = os.read(self.fd, 256)
-            s = data.decode("utf-8", "ignore")
-            i, n = 0, len(s)
-            while i < n:
-                ch = s[i]
-                if ch == "\x1b":                             # ESC seul, ou séquence (flèche)
-                    if i + 1 < n and s[i + 1] == "[":
-                        i += 2
-                        while i < n and not s[i].isalpha():
-                            i += 1
-                        i += 1
-                        continue
-                    evs.append(("esc",))
-                else:
-                    evs.append(self._classer(ch))
-                i += 1
-            return evs
+            nouveau = self._lire_bruts()
+        except KeyboardInterrupt:
+            raise
         except Exception:
             return evs
+        if nouveau:
+            self._esc_hold = 0                            # du nouveau est arrivé : on re-décide
+        self._buf += nouveau
+        s = self._buf
+        i, n = 0, len(s)
+        while i < n:
+            ch = s[i]
+            if ch == "\x1b":
+                r = self._analyser_echap(s, i)
+                if r is None:                             # ESC en fin, ou CSI incomplet
+                    if i == n - 1:                        # ESC tout seul au bout
+                        if self._esc_hold >= 1:           # resté seul un tour → vrai Échap
+                            evs.append(("esc",))
+                            i += 1
+                            self._esc_hold = 0
+                            continue
+                        self._esc_hold += 1               # on attend une éventuelle flèche fragmentée
+                    break                                 # garde le reste pour le prochain tour
+                kind, fin = r
+                if kind == "esc":
+                    evs.append(("esc",))
+                    i += 1                                # le caractère suivant sera lu normalement
+                else:
+                    i = fin                               # flèche/souris : jetée
+                continue
+            evs.append(self._classer(ch))
+            i += 1
+        self._buf = s[i:]
+        return evs
+
+    def get(self):
+        """Renvoie 'enter', 'esc' ou None (les autres touches et les séquences
+        d'échappement sont ignorées)."""
+        if not self.ok:
+            return None
+        res = None
+        for ev in self.evenements():
+            if ev[0] == "ctrl-c":
+                raise KeyboardInterrupt
+            if ev[0] in ("enter", "esc"):
+                res = ev[0]
+        return res
 
     @staticmethod
     def _classer(ch):
