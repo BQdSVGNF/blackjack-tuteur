@@ -4,6 +4,7 @@ Fonctionne dans le cmd de Windows 10/11 (couleurs ANSI 24 bits).
 Mets la variable d'environnement BJ_SANS_ANIMATION=1 pour couper les animations.
 """
 import colorsys
+import functools
 import math
 import os
 import random
@@ -63,10 +64,12 @@ def _bip(sequence=((880, 90), (1245, 130))):
 
 # ---------- Couleurs ----------
 
+@functools.lru_cache(maxsize=16384)
 def _txt(r, g, b):
     return f"\x1b[38;2;{r};{g};{b}m"
 
 
+@functools.lru_cache(maxsize=16384)
 def _fond(r, g, b):
     return f"\x1b[48;2;{r};{g};{b}m"
 
@@ -130,11 +133,33 @@ def effacer():
     _ecrire(BASE + "\x1b[2J\x1b[H")
 
 
+def agrandir_fenetre():
+    """Ouvre le tool EN GRAND : on maximise la fenêtre du terminal au lancement
+    (plus de place = œil plus grand). Best-effort, silencieux si ça échoue.
+      · Windows (conhost) : ShowWindow(SW_MAXIMIZE) sur la fenêtre de la console ;
+      · xterm / Windows Terminal / VS Code… : séquence \x1b[9;1t (maximise)."""
+    try:
+        if os.name == "nt":
+            import ctypes
+            k32, u32 = ctypes.windll.kernel32, ctypes.windll.user32
+            hwnd = k32.GetConsoleWindow()
+            if hwnd:
+                u32.ShowWindow(hwnd, 3)        # 3 = SW_MAXIMIZE
+    except Exception:
+        pass
+    try:
+        _ecrire("\x1b[9;1t")                   # maximise (terminaux type xterm)
+        time.sleep(0.06)                        # laisse la fenêtre s'ajuster
+    except Exception:
+        pass
+
+
 def initialiser():
     """Active les couleurs et bascule sur un ÉCRAN ALTERNATIF (comme vim/htop) :
     pas d'historique de défilement, donc pas de doublons ni d'intro « scrollable »."""
     if os.name == "nt":
         os.system("")  # active le mode ANSI de la console Windows
+    agrandir_fenetre()                          # on ouvre la fenêtre en grand
     try:
         sys.stdout.reconfigure(encoding="utf-8")
         sys.stdin.reconfigure(encoding="utf-8")
@@ -591,172 +616,182 @@ def _nouvelle_grille(W, H):
     return [[(" ", None, None) for _ in range(W)] for _ in range(H)]
 
 
-# compression horizontale : une cellule du terminal est ~2× plus haute que large
-_ASP = 2.05
+# L'œil est rendu en DEMI-BLOCS « ▀ » : chaque cellule = 2 pixels empilés
+# (couleur du haut = avant-plan, couleur du bas = fond). Ça DOUBLE la résolution
+# verticale → iris rond, dégradés lisses, bien plus réaliste. Dans cet espace
+# « sous-pixel », 1 colonne de large ≈ 1 demi-cellule de haut (quasi carré).
+_ASP = 2.05                         # (gardé pour la plongée/zoom)
+_FOND_OEIL = (6, 8, 12)             # noir de fond sous l'œil
+
+# --- Palette NOIR & BLANC (argent froid) : l'œil n'est plus rouge mais acier ---
+_IRIS_IN = (208, 218, 232)          # cœur de l'iris : argent clair et froid
+_IRIS_OUT = (38, 46, 60)            # bord de l'iris (limbe) : ardoise sombre
+_PUP = (5, 6, 10)                   # pupille : noir profond
+_SCLERE = (224, 230, 239)           # blanc de l'œil (très légèrement bleuté)
+_SCLERE_OMBRE = (150, 158, 172)     # blanc à l'ombre de la paupière haute
+_PAUP_HAUT = (33, 36, 45)           # paupière haute (peau dans l'ombre)
+_PAUP_BAS = (46, 50, 61)            # paupière basse
+_CARONCULE = (152, 120, 122)        # coin interne rosé (très discret)
 
 
 def _oeil_geo(W, H):
-    """Géométrie de l'œil (étiré) + les lignes où poser le slogan et l'invite."""
+    """Géométrie de l'œil GÉANT (il remplit l'écran) + lignes slogan / invite.
+    Wx = demi-largeur (colonnes), Hy = demi-hauteur (cellules), Ri = rayon
+    vertical de l'iris (cellules). L'amande est couplée ~2.5:1 (largeur:hauteur
+    visuelle) pour rester naturelle quelle que soit la taille de la fenêtre."""
     cx = W // 2
-    cy = int(H * 0.44)
-    Wx = max(min(cx - 4, 100), 12)                # DEMI-largeur (œil tout en longueur)
-    Hy = max(min(cy - 3, (H - cy) - 6, 10), 3)    # demi-hauteur (plus plat → très étiré)
-    Ri = Hy - 0.3                                  # rayon vertical de l'iris
-    r_slogan = min(cy + Hy + 3, H - 4)
-    r_invite = min(cy + Hy + 5, H - 2)
+    cy = int(H * 0.455)
+    hy_vert = max(min(cy - 1, (H - cy) - 5), 3)      # place laissée en bas (slogan)
+    wx_horiz = max(cx - 3, 12)
+    k = 5.0                                           # Wx ≈ 5·Hy → amande allongée
+    Hy = max(min(float(hy_vert), wx_horiz / k), 3.0)
+    Wx = max(min(float(wx_horiz), k * Hy), 12.0)
+    Ri = Hy * 0.98                                    # iris presque aussi haut que l'œil
+    r_slogan = min(int(cy + Hy) + 2, H - 3)
+    r_invite = min(int(cy + Hy) + 4, H - 1)
     return cx, cy, Wx, Hy, Ri, r_slogan, r_invite
 
 
 _oeil_seed = 0                                      # fixe les veines pour tout un lancement
 
 
-def _dessiner_veines(grille, W, H, cx, cy, Wx, Hy, Ri, icx, icy, ouv, intensite=1.0):
-    """Veines rouges (œil injecté de sang) sur le blanc de l'œil : des coins vers
-    l'iris, avec ramifications. Stables d'une frame à l'autre grâce à _oeil_seed."""
-    if intensite <= 0 or ouv < 0.45:
-        return
-    rng = random.Random(_oeil_seed)
-
-    def lid(ex):
-        nx = ex / Wx
-        return 0.0 if abs(nx) >= 1.0 else ouv * Hy * (1.0 - nx * nx) ** 0.52
-
-    def sur_sclere(x, y):
-        l = lid(x - cx)
-        if l < 0.6 or abs(y - cy) > l - 0.5:
-            return False
-        return math.hypot((x - icx) / _ASP, y - icy) > Ri + 0.4
-
-    def trace(x, y, ang, pas, prof):
-        for i in range(pas):
-            ang += rng.uniform(-0.45, 0.45)
-            x += math.cos(ang) * 1.25
-            y += math.sin(ang) * 0.62
-            xi, yi = int(round(x)), int(round(y))
-            if not (0 <= xi < W and 0 <= yi < H) or not sur_sclere(xi, yi):
-                return
-            fade = 1.0 - i / max(pas, 1) * 0.65
-            rr = min(255, int((150 + 95 * intensite) * fade))
-            grille[yi][xi] = ("█", _txt(rr, int(34 * fade), int(32 * fade)), None)
-            if prof == 0 and rng.random() < 0.12 and i > 1:      # une ramification
-                trace(x, y, ang + rng.uniform(-1.1, 1.1), rng.randint(3, 7), 1)
-
-    for _ in range(rng.randint(4, 6)):
-        cote = rng.choice((-1, 1))
-        sx = cx + cote * rng.uniform(Wx * 0.62, Wx * 0.96)
-        sy = cy + rng.uniform(-0.55, 0.55) * Hy
-        ang = math.atan2(cy - sy, (cx - sx)) + rng.uniform(-0.6, 0.6)
-        trace(sx, sy, ang, rng.randint(max(int(Wx * 0.30), 4), max(int(Wx * 0.60), 6)), 0)
+def _dessiner_veines(*a, **k):
+    """(Remplacé par des veines procédurales dans _dessiner_oeil.)"""
+    return
 
 
-def _dessiner_oeil(grille, W, H, ouv, gx, gy, dil, f, veines=1.0):
-    """Dessine un œil réaliste et détaillé dans la grille.
-    ouv 0→1 = ouverture des paupières ; gx,gy = décalage du regard ; dil = pupille."""
+def _dessiner_oeil(grille, W, H, ouv, gx, gy, dil, f, veines=1.0, ri_scale=1.0):
+    """Œil réaliste GÉANT rendu en demi-blocs « ▀ » (2 pixels verticaux/cellule).
+    ouv 0→1 ouverture · gx,gy regard · dil pupille · ri_scale taille de l'iris."""
     cx, cy, Wx, Hy, Ri, _, _ = _oeil_geo(W, H)
-    Rp = Ri * 0.40 * dil                           # rayon de la pupille
-    icx, icy = cx + gx, cy + gy                     # centre de l'iris (suit le regard)
+    P = 0.52                                     # exposant de l'amande (coins pointus)
+    cyp = 2.0 * cy                               # centre vertical de l'œil (sous-pixels)
+    Hyp = 2.0 * Hy                               # demi-hauteur de l'ouverture (sous-pixels)
+    icx = cx + gx                                # centre iris (suit le regard)
+    icyp = cyp + 2.0 * gy
+    Riy = max(2.0 * Ri * ri_scale, 1.0)          # rayon vertical iris (sous-pixels)
+    Rix = max(Riy * 1.02, 1.0)                   # rayon horizontal iris (colonnes) → rond
+    pupf = max(min(0.42 * dil, 0.95), 0.03)      # pupille en fraction de l'iris
+    lid_ep = Hyp * 0.17 + 1.6                    # épaisseur des paupières (sous-pixels)
+    seedph = (_oeil_seed % 628) / 100.0          # phase des fibres (stable/lancement)
 
-    def lid(ex):                                    # demi-hauteur de l'amande à la colonne ex
-        nx = ex / Wx
-        if abs(nx) >= 1.0:
-            return 0.0
-        return ouv * Hy * (1.0 - nx * nx) ** 0.52   # exposant bas = coins plus pointus (étiré)
+    sin = math.sin; hypot = math.hypot; atan2 = math.atan2
+    I_IN, I_OUT = _IRIS_IN, _IRIS_OUT
+    SCL, SCLO, PH, PB = _SCLERE, _SCLERE_OMBRE, _PAUP_HAUT, _PAUP_BAS
+    vein_a = 0.45 * veines
 
-    y0, y1 = max(cy - Hy - 2, 0), min(cy + Hy + 3, H)
-    x0, x1 = max(cx - Wx - 1, 0), min(cx + Wx + 2, W)
+    def pix(xf, yp, L, nx):
+        """Couleur (r,g,b) d'un sous-pixel, ou None si hors de l'œil + paupières."""
+        dyc = yp - cyp
+        ad = dyc if dyc >= 0 else -dyc
+        if ad > L:                               # hors ouverture → paupière (peau) ?
+            if L > 1.0 and ad <= L + lid_ep:
+                e = (ad - L) / lid_ep
+                if dyc < 0:                      # paupière haute
+                    if e < 0.14:
+                        return (95, 99, 114)     # ourlet clair (bord mouillé)
+                    base = PH
+                else:                            # paupière basse
+                    if e < 0.12:
+                        return (92, 97, 110)
+                    base = PB
+                sh = 1.0 - 0.55 * e
+                return (int(base[0]*sh), int(base[1]*sh), int(base[2]*sh))
+            return None
+        # ombrage vertical DOUX : le haut de l'œil est dans l'ombre de la paupière,
+        # le bas capte la lumière → dégradé (plus de « bande » horizontale dure).
+        vpos = dyc / L                           # -1 (haut) … +1 (bas)
+        shade = 0.55 + 0.45 * (vpos * 0.5 + 0.5)
+        dxn = (xf - icx) / Rix
+        dyn = (yp - icyp) / Riy
+        rn = hypot(dxn, dyn)
+        if rn <= pupf - 0.05:                    # pupille (noir profond)
+            return _PUP
+        if rn <= pupf + 0.05:                    # bord adouci de la pupille
+            return (17, 18, 24)
+        if rn <= 1.0:                            # iris (argent froid, détaillé)
+            t = (rn - pupf) / (1.0 - pupf)       # 0 au bord pupille → 1 au limbe
+            th = atan2(dyn, dxn)
+            fib = 0.5 + 0.5 * sin(th * 52.0 + rn * 5.0 + seedph)   # fibres radiales fines
+            cry = 0.5 + 0.5 * sin(th * 7.0 - rn * 3.2 + 0.7)       # cryptes plus larges
+            br = (0.62 + 0.48 * fib) * (0.84 + 0.30 * cry) * shade
+            if 0.07 < t < 0.20:
+                br *= 1.42                        # collerette claire autour de la pupille
+            if t > 0.86:
+                br *= 0.32                        # anneau limbique (sombre)
+            r = (I_IN[0] + (I_OUT[0]-I_IN[0])*t) * br
+            g = (I_IN[1] + (I_OUT[1]-I_IN[1])*t) * br
+            b = (I_IN[2] + (I_OUT[2]-I_IN[2])*t) * br
+            return (int(r) if r < 255 else 255,
+                    int(g) if g < 255 else 255,
+                    int(b) if b < 255 else 255)
+        # --- blanc de l'œil (sclère), ombré en dégradé ---
+        anx = nx if nx >= 0 else -nx
+        if anx > 0.86:                           # coin interne rosé (caroncule), discret
+            m = (anx - 0.86) / 0.14
+            r = (SCL[0] + 8*m) * shade; g = (SCL[1] - 46*m) * shade; b = (SCL[2] - 42*m) * shade
+            return (int(r) if r < 255 else 255, int(g) if g > 0 else 0, int(b) if b > 0 else 0)
+        r = SCL[0] * shade; g = SCL[1] * shade; b = SCL[2] * shade
+        if vein_a > 0.0 and anx > 0.42:          # fines veines (œil très légèrement injecté)
+            vn = sin(xf * 0.42 + yp * 0.9) + 0.7 * sin(xf * 1.1 - yp * 0.5 + 1.0)
+            if vn > 1.52:
+                k2 = vein_a * (anx - 0.42)
+                r -= 15 * k2; g -= 40 * k2; b -= 38 * k2
+        return (int(r) if r < 255 else 255, int(g) if g > 0 else 0, int(b) if b > 0 else 0)
+
+    x0 = max(int(cx - Wx) - 1, 0); x1 = min(int(cx + Wx) + 2, W)
+    y0 = max(int(cy - Hy) - 2, 0); y1 = min(int(cy + Hy) + 3, H)
+    txt = _txt; fond = _fond; FB = _FOND_OEIL
+    Wx_inv = 1.0 / Wx
+    Lcol = [0.0] * W                             # demi-ouverture par colonne (1 calcul)
+    for x in range(x0, x1):
+        nxx = (x - cx) * Wx_inv
+        if -1.0 < nxx < 1.0:
+            Lcol[x] = ouv * Hyp * (1.0 - nxx*nxx) ** P
     for y in range(y0, y1):
-        dy = y - cy
         row = grille[y]
+        ypt = 2.0 * y; ypb = ypt + 1.0
         for x in range(x0, x1):
-            ex = x - cx
-            l = lid(ex)
-            if l <= 0.0:
+            L = Lcol[x]
+            if L <= 0.0:
                 continue
-            ady = abs(dy)
-            if ady > l + 0.6:
+            nxx = (x - cx) * Wx_inv
+            ct = pix(x, ypt, L, nxx)
+            cb = pix(x, ypb, L, nxx)
+            if ct is None:
+                if cb is None:
+                    continue
+                row[x] = ("▀", txt(*FB), fond(*cb))
+            elif cb is None:
+                row[x] = ("▀", txt(*ct), fond(*FB))
+            else:
+                row[x] = ("▀", txt(*ct), fond(*cb))
+
+    # --- reflet spéculaire (grosse lumière en haut-gauche de l'iris) ---
+    gcx = int(round(icx - Rix * 0.40))
+    gcy = int((icyp - Riy * 0.46) / 2.0)
+    for dx, dy, c in ((0, 0, (255, 255, 255)), (1, 0, (232, 240, 252)),
+                      (-1, 0, (226, 235, 250)), (0, 1, (206, 218, 238))):
+        xx, yy = gcx + dx, gcy + dy
+        if 0 <= xx < W and 0 <= yy < H and abs(2*yy - cyp) <= Lcol[xx]:
+            grille[yy][xx] = ("▀", txt(*c), fond(*c))
+    # reflet secondaire discret (bas-droite)
+    sx = int(round(icx + Rix * 0.52)); sy = int((icyp + Riy * 0.52) / 2.0)
+    if 0 <= sx < W and 0 <= sy < H and abs(2*sy - cyp) <= Lcol[sx]:
+        grille[sy][sx] = ("▀", txt(150, 160, 176), fond(118, 128, 144))
+
+    # --- cils sur la paupière haute (quelques traits fins) ---
+    if ouv > 0.72:
+        pas = max(int(Wx // 13), 2)
+        for x in range(x0, x1, pas):
+            L = Lcol[x]
+            if L < Hyp * 0.32:
                 continue
-            bord_paup = ady > l - 0.6                # tout près du bord de la paupière
-            sous_haut = dy < -l * 0.30               # sous la paupière haute → ombre
-            vx = (x - icx) / _ASP
-            vy = (y - icy)
-            r = math.hypot(vx, vy)
-            th = math.atan2(vy, vx)
-
-            if r <= Rp - 0.5:                        # --- pupille (noir profond) ---
-                ch, col = "█", (3, 5, 11)
-            elif r <= Rp + 0.4:                      # bord adouci de la pupille
-                ch, col = "▓", (18, 6, 8)
-            elif r <= Ri:                            # --- iris bleu, très détaillé ---
-                rn = (r - Rp) / max(Ri - Rp, 0.01)   # 0 au bord pupille → 1 au limbe
-                fib = 0.5 + 0.5 * math.sin(th * 46 + r * 0.9)      # fibres radiales fines
-                cry = 0.5 + 0.5 * math.sin(th * 6 - r * 1.8 + 0.7)  # cryptes plus larges
-                cc = (255, 95, 68)                   # centre incandescent (rouge-orangé)
-                ec = (82, 10, 14)                    # bord profond (rouge sombre)
-                base = [cc[i] + (ec[i] - cc[i]) * rn for i in range(3)]
-                br = (0.70 + 0.42 * fib) * (0.85 + 0.30 * cry)
-                if 0.10 < rn < 0.24:                 # collerette claire autour de la pupille
-                    br *= 1.4
-                if rn > 0.88:                        # anneau limbique sombre
-                    br *= 0.30
-                if sous_haut:
-                    br *= 0.60
-                col = tuple(min(255, max(0, int(c * br))) for c in base)
-                s = fib * 0.6 + cry * 0.4
-                ch = "█" if s > 0.56 else ("▓" if s > 0.34 else "▒")
-            else:                                    # --- blanc de l'œil (sclère) ---
-                nx = ex / Wx
-                coin = abs(nx) > 0.88
-                if coin:                             # petite caroncule rosée au coin
-                    ch, col = "▓", (198, 162, 162)
-                else:
-                    v = 150 if sous_haut else 224
-                    col = [v, min(255, v + 6), min(255, v + 14)]
-                    vn = math.sin(ex * 0.5 + dy * 1.7) + 0.6 * math.sin(ex * 1.3 - dy * 0.5 + 1.0)
-                    if vn > 1.5 and abs(nx) > 0.45:   # veines rares, plutôt vers les côtés
-                        col = [min(255, col[0] + 6), int(col[1] * 0.80), int(col[2] * 0.80)]
-                    ch, col = "█", tuple(col)
-            if bord_paup:                            # anti-aliasing du contour
-                ch = "▒" if r <= Ri else "░"
-            row[x] = (ch, _txt(*col), None)
-
-    # --- veines rouges (œil injecté de sang) sur la sclère ---
-    _dessiner_veines(grille, W, H, cx, cy, Wx, Hy, Ri, icx, icy, ouv, veines)
-
-    # --- reflet spéculaire (lumière en haut-gauche de l'iris) + reflet secondaire ---
-    for ax, ay, c in ((0, 0, (255, 255, 255)), (1, 0, (236, 246, 255)),
-                      (0, 1, (224, 238, 252)), (1, 1, (205, 225, 245))):
-        hx = int(icx - Ri * 0.8) + ax
-        hy = int(icy - Ri * 0.5) + ay
-        if 0 <= hx < W and 0 <= hy < H and abs(hy - cy) <= lid(hx - cx):
-            grille[hy][hx] = ("█", _txt(*c), None)
-    sx, sy = int(icx + Ri * 0.6), int(icy + Ri * 0.5)
-    if 0 <= sx < W and 0 <= sy < H and abs(sy - cy) <= lid(sx - cx):
-        grille[sy][sx] = ("▓", _txt(170, 110, 105), None)
-
-    # --- paupières + cils ---
-    for x in range(max(cx - Wx, 0), min(cx + Wx + 1, W)):
-        ex = x - cx
-        l = lid(ex)
-        if l < 0.5:
-            continue
-        yt = cy - int(round(l))                      # paupière haute
-        yb = cy + int(round(l))                      # paupière basse
-        if 0 <= yt < H:
-            grille[yt][x] = ("▀", _txt(70, 46, 40), None)
-        if 0 <= yb < H:
-            grille[yb][x] = ("▄", _txt(55, 34, 30), None)
-        if ouv > 0.75 and ex % 3 == 0:               # cils (œil ouvert)
-            cl = yt - 1
-            if 0 <= cl < H and abs((cl) - cy) > l:
-                pointe = "╲" if ex < -Wx * 0.3 else ("╱" if ex > Wx * 0.3 else "│")
-                grille[cl][x] = (pointe, _txt(35, 24, 22), None)
-    # --- pli de la paupière (trait sombre discret au-dessus) ---
-    if ouv > 0.6:
-        for x in range(max(cx - Wx, 0), min(cx + Wx + 1, W)):
-            l = lid(x - cx)
-            yc = cy - int(round(l)) - 2
+            yc = int((cyp - L) / 2.0) - 1
             if 0 <= yc < H and grille[yc][x][0] == " ":
-                grille[yc][x] = ("─", _txt(26, 30, 40), None)
+                ex = x - cx
+                pt = "╲" if ex < -Wx * 0.3 else ("╱" if ex > Wx * 0.3 else "│")
+                grille[yc][x] = (pt, txt(18, 20, 26), None)
 
 
 def _poser_centre(grille, W, H, row, s, couleur):
@@ -782,17 +817,17 @@ def _poser_segments(grille, W, H, row, segments):
 
 def _poser_slogan(grille, W, H, texte):
     _, _, _, _, _, r_slogan, _ = _oeil_geo(W, H)
-    _poser_centre(grille, W, H, r_slogan, texte, _txt(130, 245, 185))
+    _poser_centre(grille, W, H, r_slogan, texte, _txt(212, 224, 238))   # argent clair
 
 
 def _poser_invite(grille, W, H, allume=True):
     _, _, _, _, _, _, r_invite = _oeil_geo(W, H)
-    ent = _txt(120, 240, 150) if allume else _txt(60, 120, 80)
-    ech = _txt(240, 110, 110) if allume else _txt(120, 60, 60)
-    gris = _txt(120, 130, 140)
+    ent = _txt(228, 234, 244) if allume else _txt(96, 104, 116)         # blanc argenté
+    ech = _txt(208, 120, 120) if allume else _txt(112, 70, 72)          # seul accent : rose éteint
+    gris = _txt(116, 126, 140)
     _poser_segments(grille, W, H, r_invite, [
-        ("[ENTRÉE]", ent), (" entrer dans la partie      ", gris),
-        ("[ÉCHAP]", ech), (" quitter", gris),
+        ("[ENTRÉE]", ent), ("  entrer dans la partie        ", gris),
+        ("[ÉCHAP]", ech), ("  quitter", gris),
     ])
 
 
@@ -805,119 +840,249 @@ def _interp(t, ks):
     return ks[-1][1]
 
 
+# ---------- Cartes qui tournent (360° sur leur axe vertical) ----------
+# Deux as : un CLAIR (white hat) et un SOMBRE (black hat) — l'éthique du hacker.
+# La rotation est simulée en comprimant la largeur (× |cos θ|) et en montrant la
+# face quand cos θ ≥ 0, le dos quand cos θ < 0 : l'illusion d'un rotateY 3D.
+
+_SPADE_ART = [
+    "      █      ",
+    "    ▄███▄    ",
+    "  ▄███████▄  ",
+    "▄███████████▄",
+    "█████████████",
+    "▀██▀▀███▀▀██▀",
+    "     ███     ",
+    "   ▄▄███▄▄   ",
+]
+_LARG_CARTE, _HAUT_CARTE = 15, 14          # colonnes × lignes
+
+
+def _carte_as(kind):
+    """Construit un as (faces avant/arrière) en cellules (char, fg, bg).
+    kind 'clair' = carte blanche/encre noire · 'sombre' = carte noire/encre claire."""
+    if kind == "clair":
+        BG, INK, ED = (228, 232, 238), (24, 26, 34), (64, 68, 80)
+    else:
+        BG, INK, ED = (17, 19, 26), (223, 229, 239), (150, 158, 172)
+    bg, ink, ed = _fond(*BG), _txt(*INK), _txt(*ED)
+    inner = _LARG_CARTE - 2
+
+    def cell_row(s):
+        s = (s + " " * inner)[:inner]
+        return [(" ", None, bg) if ch == " " else (ch, ink, bg) for ch in s]
+
+    def bord(g, d):
+        return [(g, ed, bg)] + [("─", ed, bg)] * inner + [(d, ed, bg)]
+
+    # --- FACE : coins A♠ + grand pique au centre ---
+    front = [bord("╭", "╮")]
+    front.append([("│", ed, bg)] + cell_row("A") + [("│", ed, bg)])
+    front.append([("│", ed, bg)] + cell_row("♠") + [("│", ed, bg)])
+    for ligne in _SPADE_ART:
+        front.append([("│", ed, bg)] + cell_row(ligne) + [("│", ed, bg)])
+    front.append([("│", ed, bg)] + cell_row("           ♠") + [("│", ed, bg)])
+    front.append([("│", ed, bg)] + cell_row("           A") + [("│", ed, bg)])
+    front.append(bord("╰", "╯"))
+
+    # --- DOS : treillis + petit pique central ---
+    dos = [bord("╭", "╮")]
+    motif = "▞▚" * ((inner // 2) + 1)
+    for r in range(_HAUT_CARTE - 2):
+        cells = [(motif[(r + i) % len(motif)], ed, bg) for i in range(inner)]
+        dos.append([("│", ed, bg)] + cells + [("│", ed, bg)])
+    mid = (_HAUT_CARTE - 2) // 2
+    dos[mid][1 + inner // 2] = ("♠", ink, bg)
+    dos.append(bord("╰", "╯"))
+    return {"front": front, "back": dos, "w": _LARG_CARTE, "h": _HAUT_CARTE}
+
+
+_AS_CLAIR = None
+_AS_SOMBRE = None
+
+
+def _as_caches():
+    global _AS_CLAIR, _AS_SOMBRE
+    if _AS_CLAIR is None:
+        _AS_CLAIR = _carte_as("clair")
+        _AS_SOMBRE = _carte_as("sombre")
+    return _AS_CLAIR, _AS_SOMBRE
+
+
+def _poser_carte_spin(grille, W, H, ccx, ccy, carte, angle):
+    """Pose la carte centrée en (ccx, ccy), tournée de `angle` (axe vertical)."""
+    c = math.cos(angle)
+    face = carte["front"] if c >= 0 else carte["back"]
+    Wc, Hc = carte["w"], carte["h"]
+    w = max(1, int(round(Wc * abs(c))))
+    x0 = ccx - w // 2
+    y0 = ccy - Hc // 2
+    for ry in range(Hc):
+        gy = y0 + ry
+        if not (0 <= gy < H):
+            continue
+        srow = face[ry]
+        rowg = grille[gy]
+        for j in range(w):
+            sx = (Wc - 1 - int(j / w * Wc)) if c < 0 else int(j / w * Wc)   # dos = miroir
+            if sx < 0:
+                sx = 0
+            elif sx >= Wc:
+                sx = Wc - 1
+            gx = x0 + j
+            if 0 <= gx < W:
+                rowg[gx] = srow[sx]
+    if w <= 2:                                   # presque de profil → tranche lumineuse
+        for ry in range(1, Hc - 1):
+            gy, gx = y0 + ry, ccx
+            if 0 <= gy < H and 0 <= gx < W:
+                grille[gy][gx] = ("▌", _txt(206, 212, 224), _fond(150, 156, 168))
+
+
+def _poser_as_coins(grille, W, H, ang_g=0.0, ang_d=0.0):
+    """Les deux as (clair = white hat, sombre = black hat) posés en bas, dans les
+    coins noirs de l'écran (hors de l'amande de l'œil). Grand écran seulement."""
+    if W < 92 or H < 40:
+        return
+    clair, sombre = _as_caches()
+    cyb = H - _HAUT_CARTE // 2 - 2
+    xg = _LARG_CARTE // 2 + 3
+    xd = W - _LARG_CARTE // 2 - 3
+    _poser_carte_spin(grille, W, H, xg, cyb, clair, ang_g)
+    _poser_carte_spin(grille, W, H, xd, cyb, sombre, ang_d)
+
+
+def _intro_cartes(W, H, kb):
+    """Lever de rideau : deux as tournent à 360° au centre — un CLAIR (white hat)
+    et un SOMBRE (black hat). Ils accélèrent, ralentissent, se présentent de face,
+    puis s'effacent pour laisser place à l'œil."""
+    if H < 18 or W < 44:
+        return None
+    cx, cy, _, _, _, _, _ = _oeil_geo(W, H)
+    clair, sombre = _as_caches()
+    ccy = min(max(cy, _HAUT_CARTE // 2 + 1), H - _HAUT_CARTE // 2 - 4)
+    ecart = min(W // 2 - 10, 17)
+    xg, xd = cx - ecart, cx + ecart
+    rcap = min(ccy + _HAUT_CARTE // 2 + 2, H - 3)
+    cap1, cc1 = "WHITE HAT   ◇   BLACK HAT", _txt(212, 220, 234)
+    cap2, cc2 = "deux faces · une seule main", _txt(118, 128, 142)
+
+    def img(ang_g, ang_d, p):
+        grille = _nouvelle_grille(W, H)
+        _poser_carte_spin(grille, W, H, xg, ccy, clair, ang_g)
+        _poser_carte_spin(grille, W, H, xd, ccy, sombre, ang_d)
+        if p > 0.35:
+            _poser_centre(grille, W, H, rcap, cap1, cc1)
+        if p > 0.55:
+            _poser_centre(grille, W, H, rcap + 1, cap2, cc2)
+        _ecrire(_rendu_grille(grille))
+
+    frames = 94
+    tours = 3.0
+    for f in range(frames):                          # grande rotation qui ralentit
+        t = f / (frames - 1)
+        e = 1.0 - (1.0 - t) ** 2.4                    # ease-out
+        ang = tours * 2 * math.pi * e
+        img(ang, -ang, t)
+        k = kb.get()
+        if k:
+            return k
+        time.sleep(0.012)
+    for _ in range(16):                              # pose : face caméra
+        img(0.0, 0.0, 1.0)
+        k = kb.get()
+        if k:
+            return k
+        time.sleep(0.03)
+    for f in range(12):                              # sortie : les cartes repartent
+        t = f / 11.0
+        ang = (math.pi / 2) * t
+        img(ang, -ang, 1.0)
+        if kb.get():
+            break
+        time.sleep(0.02)
+    _ecrire(BASE + "\x1b[2J\x1b[H")
+    return None
+
+
 def _oeil_ouverture(W, H, kb):
-    """Ouverture LONGUE et détaillée : deux clignements puis grande ouverture,
-    avec un léger balayage du regard. Renvoie 'enter'/'esc' si on appuie, sinon None."""
+    """L'œil GÉANT s'ouvre : deux clignements puis grande ouverture, avec un léger
+    balayage du regard. Rendu fluide. Renvoie 'enter'/'esc' si on appuie."""
     cx, cy, Wx, Hy, Ri, _, _ = _oeil_geo(W, H)
-    cles = [(0.00, 0.0), (0.12, 0.0), (0.18, 0.55), (0.24, 0.05), (0.33, 0.65),
-            (0.39, 0.06), (0.52, 1.0), (0.72, 1.0), (0.76, 0.12), (0.82, 1.0), (1.0, 1.0)]
-    frames = 120                                     # long
+    cles = [(0.00, 0.0), (0.10, 0.0), (0.16, 0.60), (0.22, 0.05), (0.31, 0.72),
+            (0.37, 0.06), (0.50, 1.0), (0.70, 1.0), (0.74, 0.14), (0.80, 1.0), (1.0, 1.0)]
+    frames = 96
     for f in range(frames):
         t = f / (frames - 1)
         ouv = _interp(t, cles)
         look = max(0.0, min((t - 0.50) / 0.45, 1.0))
-        gx = (Wx * 0.16) * math.sin(t * 5.0) * look
-        gy = (Hy * 0.12) * math.sin(t * 3.1 + 1) * look
-        if t > 0.92:                                 # recentre le regard à la fin
-            gx *= (1 - t) / 0.08
-            gy *= (1 - t) / 0.08
-        dil = 1.0 + 0.06 * math.sin(f * 0.22)
+        gx = (Wx * 0.14) * math.sin(t * 5.0) * look
+        gy = (Hy * 0.10) * math.sin(t * 3.1 + 1) * look
+        if t > 0.90:                                 # recentre le regard à la fin
+            gx *= max((1 - t) / 0.10, 0.0)
+            gy *= max((1 - t) / 0.10, 0.0)
+        dil = 1.0 + 0.05 * math.sin(f * 0.22)
         grille = _nouvelle_grille(W, H)
         _dessiner_oeil(grille, W, H, ouv, gx, gy, dil, f)
         _ecrire(_rendu_grille(grille))
         k = kb.get()
         if k:
             return k
-        time.sleep(0.045)
+        time.sleep(0.010)
     return None
 
 
 def _oeil_revele(W, H, slogan, kb):
-    """Le slogan se décode sous l'œil, puis l'invite apparaît."""
-    frames = 18
+    """Le slogan se décode sous l'œil, puis l'invite apparaît (+ les deux as en bas)."""
+    frames = 22
     for f in range(frames):
         p = (f + 1) / frames
         grille = _nouvelle_grille(W, H)
         _dessiner_oeil(grille, W, H, 1.0, 0.0, 0.0, 1.0 + 0.05 * math.sin(f * 0.3), 900 + f)
+        _poser_as_coins(grille, W, H)
         n = int(len(slogan) * p)
         aff = "".join(slogan[i] if i < n else random.choice(_GARB) for i in range(len(slogan)))
         _poser_slogan(grille, W, H, aff)
-        if p > 0.55:
+        if p > 0.5:
             _poser_invite(grille, W, H, allume=True)
         _ecrire(_rendu_grille(grille))
         k = kb.get()
         if k:
             return k
-        time.sleep(0.05)
+        time.sleep(0.04)
     return None
 
 
-_SCAN_HUD = ["> ANALYSE RÉTINIENNE", "> IDENTITÉ : INCONNUE", "> MENACE   : ÉLEVÉE"]
-
-
-def _poser_gauche(grille, W, H, row, colg, s, couleur):
-    if not (0 <= row < H):
-        return
-    for i, ch in enumerate(s):
-        if 0 <= colg + i < W:
-            grille[row][colg + i] = (ch, couleur, None)
-
-
-def _oeil_reticule(grille, W, H, cx, cy, Wx, Hy, serre, couleur):
-    """Crochets de visée aux quatre coins de l'œil (serre 0 = large … 1 = collé)."""
-    mx = int(Wx + 5 - serre * 4)
-    my = int(Hy + 2 - serre * 1)
-    coins = {(-1, -1): "┌", (1, -1): "┐", (-1, 1): "└", (1, 1): "┘"}
-    for sx in (-1, 1):
-        for sy in (-1, 1):
-            x0, y0 = cx + sx * mx, cy + sy * my
-            if not (0 <= y0 < H and 0 <= x0 < W):
-                continue
-            grille[y0][x0] = (coins[(sx, sy)], couleur, None)
-            for d in range(1, 5):                        # bras horizontal
-                x = x0 - sx * d
-                if 0 <= x < W:
-                    grille[y0][x] = ("─", couleur, None)
-            for d in range(1, 3):                        # bras vertical
-                y = y0 + sy * d
-                if 0 <= y < H:
-                    grille[y][x0] = ("│", couleur, None)
-
-
-def _oeil_scan(W, H, kb):
-    """Scan de l'iris + lecture HUD, puis la pupille se contracte (VERROUILLÉ)."""
-    cx, cy, Wx, Hy, Ri, r_slogan, _ = _oeil_geo(W, H)
-    cyan, rouge, vif = _txt(90, 210, 230), _txt(240, 70, 70), _txt(170, 255, 245)
-    frames = 60
+def _oeil_frisson(W, H, slogan, kb):
+    """Un bref frisson : l'iris se rétracte D'UN COUP (minuscule), l'œil se fige
+    et s'écarquille, puis tout revient à la normale. « Ça fait peur, mais pas trop. »"""
+    frames = 48
     for f in range(frames):
-        p = f / (frames - 1)
-        verrou = p > 0.72
-        if not verrou:
-            dil = 1.08 + 0.05 * math.sin(f * 0.4)
-        else:
-            dil = 1.08 - 0.62 * min((p - 0.72) / 0.28, 1.0)     # contraction nette
-        gx = (Wx * 0.05) * math.sin(f * 0.2)
+        t = f / (frames - 1)
+        if t < 0.22:                                     # rétraction vive
+            u = t / 0.22
+            ri = 1.0 - u * 0.72
+            dil = 1.0 - u * 0.56
+        elif t < 0.50:                                   # maintien : iris minuscule
+            ri, dil = 0.28, 0.44
+        else:                                            # retour en douceur
+            u = (t - 0.50) / 0.50
+            ri = 0.28 + u * 0.72
+            dil = 0.44 + u * 0.56
+        pic = 0.16 < t < 0.58
+        veg = 2.6 if pic else 0.7                        # veines gonflées au pic
+        ouv = 1.14 if pic else 1.0                       # œil écarquillé
+        jit = random.uniform(-0.7, 0.7) if (0.20 < t < 0.50) else 0.0   # tremblement
         grille = _nouvelle_grille(W, H)
-        _dessiner_oeil(grille, W, H, 1.0, gx, 0.0, dil, 700 + f,
-                       veines=1.0 + (1.8 if verrou else 0.0))
-        serre = 1.0 if verrou else min(p / 0.72, 1.0)
-        _oeil_reticule(grille, W, H, cx, cy, Wx, Hy, serre, rouge if verrou else cyan)
-        if not verrou:                                   # ligne de scan qui balaie
-            sy = int(cy - Hy + (f % 18) / 18.0 * 2 * Hy)
-            for x in range(max(cx - Wx, 0), min(cx + Wx + 1, W)):
-                if 0 <= sy < H and grille[sy][x][0] != " ":
-                    grille[sy][x] = (grille[sy][x][0], vif, None)
-        nb = min(len(_SCAN_HUD), int(p / 0.65 * len(_SCAN_HUD)) + 1)
-        for i in range(nb):                              # HUD en haut à gauche
-            _poser_gauche(grille, W, H, 1 + i, 2, _SCAN_HUD[i], cyan)
-        if verrou:
-            _poser_centre(grille, W, H, r_slogan, "●  CIBLE VERROUILLÉE  ●", rouge)
+        _dessiner_oeil(grille, W, H, ouv, jit, 0.0, dil, 1500 + f, veines=veg, ri_scale=ri)
+        _poser_as_coins(grille, W, H)
+        _poser_slogan(grille, W, H, slogan)
+        _poser_invite(grille, W, H, allume=True)
         _ecrire(_rendu_grille(grille))
         k = kb.get()
         if k:
             return k
-        time.sleep(0.05)
-    time.sleep(0.18)
+        time.sleep(0.03)
     return None
 
 
@@ -948,7 +1113,8 @@ def _oeil_zoom(W, H):
 
 
 def _oeil_attente(W, H, slogan, kb):
-    """L'œil reste vivant (clignements, micro-regard) et attend ENTRÉE / ÉCHAP."""
+    """L'œil reste vivant (clignements, micro-regard), les deux as tournent
+    lentement dans les coins, et on attend ENTRÉE / ÉCHAP."""
     cx, cy, Wx, Hy, Ri, _, _ = _oeil_geo(W, H)
     f = 0
     prochain_clin = random.randint(55, 110)
@@ -965,6 +1131,7 @@ def _oeil_attente(W, H, slogan, kb):
         dil = 1.0 + 0.07 * math.sin(f * 0.11)
         grille = _nouvelle_grille(W, H)
         _dessiner_oeil(grille, W, H, ouv, gx, gy, dil, f)
+        _poser_as_coins(grille, W, H, f * 0.028, -f * 0.028)   # as qui tournent doucement
         _poser_slogan(grille, W, H, slogan)
         _poser_invite(grille, W, H, allume=(f // 7) % 2 == 0)   # l'invite pulse doucement
         _ecrire(_rendu_grille(grille))
@@ -972,26 +1139,28 @@ def _oeil_attente(W, H, slogan, kb):
         if k in ("enter", "esc"):
             return k
         f += 1
-        time.sleep(0.06)
+        time.sleep(0.045)
 
 
 def _accueil_oeil(modele):
-    """Anime l'œil (ouverture → scan/verrouillage → slogan), attend la touche,
-    puis plonge dans la pupille vers le menu. True = entrer, False = quitter."""
+    """Lève le rideau : cartes qui tournent → l'œil géant s'ouvre → slogan →
+    frisson (iris minuscule) → attente. ENTRÉE plonge dans la pupille (menu),
+    ÉCHAP quitte. True = entrer, False = quitter."""
     global _intro_offset, _intro_voffset, _oeil_seed
     _intro_offset = _intro_voffset = 0
     taille = _Taille()
-    W = max(min(taille.columns - 1, 400), 24)
-    H = max(min(taille.lines - 1, 120), 14)
+    W = max(min(taille.columns - 1, 400), 40)
+    H = max(min(taille.lines - 1, 160), 16)
     slogan = random.choice(_SLOGANS)
     _oeil_seed = random.randint(1, 10 ** 6)          # veines fixes pour ce lancement
     _cacher_curseur()
     try:
         with _Clavier() as kb:
             phases = (
-                lambda: _oeil_ouverture(W, H, kb),   # l'œil s'ouvre (long)
-                lambda: _oeil_scan(W, H, kb),        # scan + verrouillage
+                lambda: _intro_cartes(W, H, kb),          # les deux as tournent (360°)
+                lambda: _oeil_ouverture(W, H, kb),        # l'œil géant s'ouvre
                 lambda: _oeil_revele(W, H, slogan, kb),   # slogan + invite
+                lambda: _oeil_frisson(W, H, slogan, kb),  # l'iris devient minuscule
                 lambda: _oeil_attente(W, H, slogan, kb),  # attend ENTRÉE / ÉCHAP
             )
             for phase in phases:
@@ -999,7 +1168,7 @@ def _accueil_oeil(modele):
                 if r == "esc":
                     return False
                 if r == "enter":
-                    _oeil_zoom(W, H)                 # plongée dans la pupille
+                    _oeil_zoom(W, H)                      # plongée dans la pupille
                     return True
             return True
     finally:
@@ -1703,8 +1872,8 @@ def montrer_strategie():
 
 
 def _composer_menu(modele):
-    """L'écran principal (dashboard si la fenêtre est large) : logo, signature,
-    menu central encadré par les panneaux MONITEUR et RÉSEAU, invite."""
+    """L'écran principal, épuré et centré : barre, logo, signature A♠ J♠,
+    les 4 sections du menu, puis l'invite (plus de panneaux latéraux)."""
     global _ligne_horloge, _col_horloge, _ip_cache, _sys_col, _sys_row0, _sys_inner
     taille = _Taille()
     # la pluie remplit toute la largeur ; jamais plus étroit que le logo (sinon
@@ -1713,14 +1882,8 @@ def _composer_menu(modele):
     if not _ip_cache:
         _ip_cache = _ip_locale()
     centre_w = 2 * LARGEUR_BOITE + 3
-    cote = (W - centre_w - 4) // 2
-    dashboard = cote >= 20                             # assez large → panneaux latéraux
-    side = min(cote, 34)
-    if dashboard:
-        marge = max((W - (2 * side + centre_w + 4)) // 2, 0) + side + 2
-    else:
-        marge = max((W - centre_w) // 2, 0)
-        _sys_col = _sys_row0 = -1
+    marge = max((W - centre_w) // 2, 0)                # menu centré (plus de panneaux latéraux)
+    _sys_col = _sys_row0 = -1
     ml = max((W - LOGO_COLS) // 2, 0)
     _ligne_horloge = 0
     _col_horloge = max(W - 10, 0)
@@ -1777,21 +1940,6 @@ def _composer_menu(modele):
     r2 = r1 + max(len(boites[0]), len(boites[1])) + 1
     poser(r2, marge, boites[2]); poser(r2, marge + LARGEUR_BOITE + 3, boites[3])
     rh = r2 + max(len(boites[2]), len(boites[3])) + 1
-
-    if dashboard:                                     # panneaux latéraux « opérateur »
-        _sys_inner = side - 2
-        pan_moni = _panneau("MONITEUR_V7", _contenu_moniteur(_sys_inner), side, NEON_V)
-        pan_res = _panneau("RÉSEAU_V3", _contenu_reseau(side - 2), side, NEON_C)
-        col_g = marge - side - 2
-        col_d = marge + centre_w + 2
-        poser(r1, col_g, pan_moni)
-        _sys_col, _sys_row0 = col_g, r1 + 1           # pour la maj en direct des jauges
-        poser(r1, col_d, pan_res)
-        # petit log décoratif sous le moniteur (aligné sur la hauteur du menu)
-        logs = [[("> boot ....... ", DISCRET), ("OK", NEON_V)],
-                [("> coffre ..... ", DISCRET), ("OK", NEON_V)],
-                [("> IA ......... ", DISCRET), ("PRÊTE", NEON_V)]]
-        poser(r1 + len(pan_moni) + 1, col_g, _panneau("LOG_V13", logs, side, _txt(150, 160, 180)))
 
     rh += 1
     aide = "╾  tape un numéro · un message pour l'IA · « menu » · « exit »  ╼"
