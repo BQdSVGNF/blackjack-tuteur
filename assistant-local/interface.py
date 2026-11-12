@@ -1270,9 +1270,7 @@ def _oeil_attente(W, H, slogan, kb):
     invite_on = True
     besoin = True                                    # redessiner ce tour ?
     while True:
-        d = _dim()                                   # la fenêtre a-t-elle changé de taille ?
-        Wn = max(min(d[0] - 1, 400), 8)
-        Hn = max(min(d[1] - 1, 160), 4)
+        Wn, Hn = _taille_oeil()                      # la fenêtre a-t-elle changé de taille ?
         if (Wn, Hn) != (W, H):                       # oui → on se ré-adapte (pas de bouillie)
             W, H = Wn, Hn
             _ecrire(BASE + "\x1b[2J\x1b[H")
@@ -1302,6 +1300,26 @@ def _oeil_attente(W, H, slogan, kb):
         time.sleep(0.05)
 
 
+def _taille_oeil():
+    """Taille de dessin de l'accueil = la taille RÉELLE de la fenêtre (moins 1 colonne
+    et 1 ligne, pour ne jamais toucher le bord). Jamais plus : sinon tout se décale."""
+    c, l = _dim()
+    return max(min(c - 1, 400), 8), max(min(l - 1, 160), 4)
+
+
+class _GardeTaille:
+    """Enveloppe le clavier pendant l'intro : répond « taille » dès que la fenêtre
+    change de dimensions, pour qu'on cesse aussitôt de dessiner à l'ancienne taille
+    (agrandir ou réduire la fenêtre en pleine animation ne doit rien casser)."""
+    def __init__(self, kb, taille):
+        self.kb, self.taille = kb, taille
+
+    def get(self):
+        if _taille_oeil() != self.taille:
+            return "taille"
+        return self.kb.get()
+
+
 def _accueil_oeil(modele):
     """Lève le rideau : cartes qui tournent → l'œil géant s'ouvre → slogan →
     frisson (iris minuscule) → attente. ENTRÉE plonge dans la pupille (menu),
@@ -1309,28 +1327,34 @@ def _accueil_oeil(modele):
     global _intro_offset, _intro_voffset, _oeil_seed
     _intro_offset = _intro_voffset = 0
     _reinit_cadre()                                  # premier cadre = plein écran
-    taille = _Taille()
-    W = max(min(taille.columns - 1, 400), 8)         # la taille RÉELLE de la fenêtre,
-    H = max(min(taille.lines - 1, 160), 4)           # jamais plus (sinon tout se décale)
+    W, H = _taille_oeil()
     slogan = random.choice(_SLOGANS)
     _oeil_seed = random.randint(1, 10 ** 6)          # veines fixes pour ce lancement
     _cacher_curseur()
     try:
         with _Clavier() as kb:
+            garde = _GardeTaille(kb, (W, H))
             phases = (
-                lambda: _intro_cartes(W, H, kb),          # les deux as tournent (360°)
-                lambda: _oeil_ouverture(W, H, kb),        # l'œil géant s'ouvre
-                lambda: _oeil_revele(W, H, slogan, kb),   # slogan + invite
-                lambda: _oeil_frisson(W, H, slogan, kb),  # l'iris devient minuscule
-                lambda: _oeil_attente(W, H, slogan, kb),  # attend ENTRÉE / ÉCHAP
+                lambda: _intro_cartes(W, H, garde),          # les deux as tournent (360°)
+                lambda: _oeil_ouverture(W, H, garde),        # l'œil géant s'ouvre
+                lambda: _oeil_revele(W, H, slogan, garde),   # slogan + invite
+                lambda: _oeil_frisson(W, H, slogan, garde),  # l'iris devient minuscule
             )
+            r = None
             for phase in phases:
                 r = phase()
-                if r == "esc":
-                    return False
-                if r == "enter":
-                    _oeil_zoom(W, H)                      # plongée dans la pupille
-                    return True
+                if r:
+                    break
+            if r not in ("enter", "esc"):
+                if r == "taille":                    # fenêtre redimensionnée en pleine intro :
+                    _ecrire(BASE + "\x1b[2J\x1b[H")  # on repart proprement à la nouvelle taille
+                    _reinit_cadre()
+                    W, H = _taille_oeil()
+                r = _oeil_attente(W, H, slogan, kb)  # attend ENTRÉE / ÉCHAP (suit la taille)
+            if r == "esc":
+                return False
+            W, H = _taille_oeil()                    # la taille du moment (elle a pu changer)
+            _oeil_zoom(W, H)                         # plongée dans la pupille
             return True
     finally:
         _montrer_curseur()
