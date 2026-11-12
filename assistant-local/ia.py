@@ -37,6 +37,7 @@ DEFAUTS = {
     "son": True,                    # bips de validation
     "crt": True,                    # effet scanlines / vieil écran
     "menu_anime": True,             # fond animé du menu (pluie Matrix + titre arc-en-ciel)
+    "theme": "neon",                # neon / white / black / matrix / claude / ange / demon
     "modele": "qwen2.5-coder:7b",   # modèle Ollama utilisé par l'IA (défini plus bas)
     # --- Mode TURBO : IA en ligne (niveau Claude), API compatible OpenAI ---
     "turbo": False,                 # False = IA locale (hors-ligne) ; True = API en ligne
@@ -93,7 +94,24 @@ def appliquer_conf(conf):
         son=conf.get("son", True),
         crt=conf.get("crt", True),
         menu_anime=conf.get("menu_anime", True),
+        theme=conf.get("theme", "neon"),
     )
+
+
+def choisir_theme(conf):
+    """Liste les thèmes, applique et enregistre celui qu'on choisit."""
+    ui.effacer()
+    ui.info("\n  🎨  THÈMES  —  tape un numéro (Entrée = garder l'actuel)\n", ui.CYAN)
+    for i, cle in enumerate(ui.ORDRE_THEMES, 1):
+        th = ui.THEMES[cle]
+        actuel = f"  {ui.VERT}← actuel" if cle == conf.get("theme", "neon") else ""
+        ui.info(f"   {ui.OR}[{i}]{ui.TEXTE} {th['nom']:<18}{ui.DISCRET}{th['desc']}{actuel}{ui.BASE}")
+    choix = ui.demander_texte("Ton thème").strip()
+    if choix.isdigit() and 1 <= int(choix) <= len(ui.ORDRE_THEMES):
+        conf["theme"] = ui.ORDRE_THEMES[int(choix) - 1]
+        ui.appliquer_theme(conf["theme"])
+        sauver_conf(conf)
+        ui.info(f"\n  Thème « {ui.THEMES[conf['theme']]['nom']} » activé ✓", ui.VERT)
 
 
 def lancer_musique(conf):
@@ -126,7 +144,7 @@ def ecran_parametres(conf):
             ("3", "Animations (intro + pluie)", oui(conf["animations"])),
             ("4", "Densité de la pluie", conf["pluie_densite"]),
             ("5", "Vitesse de la pluie", conf["pluie_vitesse"]),
-            ("6", "Titre arc-en-ciel (sinon fixe)", oui(conf["titre_cycle"])),
+            ("6", "Titre animé (sinon fixe)", oui(conf["titre_cycle"])),
             ("7", "Son (bips de validation)", oui(conf["son"])),
             ("8", "Effet CRT (scanlines)", oui(conf["crt"])),
             ("9", "Modèle de l'IA locale (code)", conf["modele"]),
@@ -135,6 +153,7 @@ def ecran_parametres(conf):
             ("12", "Clé API TURBO", "définie ✓" if conf.get("turbo_cle") else "— (requise)"),
             ("13", "Modèle TURBO", conf["turbo_modele"]),
             ("14", "URL API TURBO (avancé)", conf["turbo_url"]),
+            ("15", "Thème (white/black hat, Claude…)", ui.THEMES.get(conf.get("theme"), ui.THEMES["neon"])["nom"]),
             ("0", "Revenir au menu", ""),
         ]
         for num, nom, val in lignes:
@@ -179,6 +198,8 @@ def ecran_parametres(conf):
                 ui.info("\n  TURBO activé : l'IA répond en ligne (niveau Claude).", ui.VERT)
             else:
                 ui.info("\n  TURBO coupé : retour à l'IA locale (hors-ligne).", ui.CYAN)
+        elif choix == "15":
+            choisir_theme(conf)
         elif choix == "12":
             nv = ui.demander_texte("Colle ta clé API (vide = effacer). Elle reste sur ton PC").strip()
             conf["turbo_cle"] = nv
@@ -590,6 +611,9 @@ def _boucle(historique, conf):
             continue
         if saisie == "14" or saisie.lower() in ("params", "paramètres", "parametres"):
             ecran_parametres(conf)       # redessine le menu en sortant
+            continue
+        if saisie == "19" or saisie.lower() in ("theme", "thème", "themes", "thèmes"):
+            _ecran_dedie(lambda: choisir_theme(conf), conf)      # choix du thème (+ mascotte)
             continue
         if saisie == "5" or saisie.lower() in ("strategie", "stratégie", "strat"):
             _ecran_dedie(lambda: (ui.montrer_strategie(), ui.attendre_touche()), conf)

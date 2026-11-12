@@ -26,9 +26,11 @@ MENU_ANIME = True          # fond animé du menu (pluie Matrix + titre arc-en-ci
 
 
 def appliquer_params(animations=None, densite=None, vitesse=None, cycle=None,
-                     son=None, crt=None, menu_anime=None):
+                     son=None, crt=None, menu_anime=None, theme=None):
     """Applique les réglages du mode Paramètres (à chaud)."""
     global ANIMATIONS, PLUIE_DENSITE, PLUIE_VITESSE, TITRE_CYCLE, SON, CRT, MENU_ANIME
+    if theme is not None:
+        appliquer_theme(theme)
     if menu_anime is not None:
         MENU_ANIME = bool(menu_anime)
     if animations is not None:
@@ -383,6 +385,205 @@ _LOGO_TEINTES = ([_lignes_logo_teinte(i * 360 // _PAS_TEINTE) for i in range(_PA
                  if LOGO_COLS else [])
 _LOGO_CELLS = ([_cells_logo_teinte(i * 360 // _PAS_TEINTE) for i in range(_PAS_TEINTE)]
                if LOGO_COLS else [])
+
+
+# ---------- THÈMES ----------
+# Un thème change : l'iris de l'œil, la pluie du menu, la couleur du logo (avec un
+# reflet qui balaie), l'as qui tourne, et pour les thèmes « Claude », la mascotte
+# posée de chaque côté du logo (normale, ange ou démon).
+THEMES = {
+    "neon":   {"nom": "Néon (d'origine)", "desc": "titre arc-en-ciel, pluie verte, œil argent",
+               "iris": ((208, 218, 232), (38, 46, 60)), "logo": None,
+               "pluie": ((120, 220, 150), (22, 60, 40), (72, 165, 105)),
+               "carte": ("clair", None), "mascotte": None},
+    "white":  {"nom": "White Hat", "desc": "argent et blanc : le hacker éthique",
+               "iris": ((208, 218, 232), (38, 46, 60)), "logo": ((70, 76, 92), (246, 249, 255)),
+               "pluie": ((235, 240, 250), (40, 46, 58), (150, 160, 178)),
+               "carte": ("clair", None), "mascotte": None},
+    "black":  {"nom": "Black Hat", "desc": "noir et rouge sang : le côté obscur",
+               "iris": ((255, 95, 68), (82, 10, 14)), "logo": ((70, 6, 10), (255, 96, 84)),
+               "pluie": ((255, 120, 110), (60, 10, 12), (190, 40, 40)),
+               "carte": ("sombre", (232, 62, 62)), "mascotte": None},
+    "matrix": {"nom": "Matrix", "desc": "tout en vert phosphore",
+               "iris": ((170, 255, 190), (10, 60, 30)), "logo": ((8, 52, 22), (160, 255, 180)),
+               "pluie": ((190, 255, 205), (10, 50, 20), (40, 200, 90)),
+               "carte": ("sombre", (80, 230, 130)), "mascotte": None},
+    "claude": {"nom": "Claude", "desc": "orange Claude + la mascotte",
+               "iris": ((250, 170, 130), (90, 40, 25)), "logo": ((96, 42, 28), (255, 196, 156)),
+               "pluie": ((255, 190, 150), (60, 28, 18), (217, 119, 87)),
+               "carte": ("clair", (196, 96, 64)), "mascotte": "claude"},
+    "ange":   {"nom": "Claude Ange", "desc": "or et blanc, la mascotte avec auréole et ailes",
+               "iris": ((255, 236, 170), (120, 90, 30)), "logo": ((112, 86, 32), (255, 250, 226)),
+               "pluie": ((255, 250, 230), (60, 52, 30), (230, 200, 120)),
+               "carte": ("clair", (160, 120, 30)), "mascotte": "ange"},
+    "demon":  {"nom": "Claude Démon", "desc": "rouge braise, la mascotte avec cornes et queue",
+               "iris": ((255, 70, 40), (40, 0, 4)), "logo": ((52, 0, 4), (255, 72, 52)),
+               "pluie": ((255, 90, 60), (50, 4, 6), (170, 20, 20)),
+               "carte": ("sombre", (255, 72, 52)), "mascotte": "demon"},
+}
+ORDRE_THEMES = ["neon", "white", "black", "matrix", "claude", "ange", "demon"]
+THEME = "neon"
+_LOGO_NEON = _LOGO_TEINTES                     # l'arc-en-ciel d'origine (thème Néon)
+_LOGO_CELLS_THEME = _LOGO_CELLS[0] if _LOGO_CELLS else []   # logo « au repos » du thème
+_PLUIE_COUL = THEMES["neon"]["pluie"]
+
+
+def _logo_theme(sombre, clair, n=_PAS_TEINTE):
+    """Le logo recoloré selon sa luminosité (dégradé sombre → clair du thème), en n
+    images : un reflet balaie le titre pendant la 1re moitié, puis repos."""
+    if not LOGO_COLS:
+        return [], []
+    lum = lambda c: 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]
+    encres = [lum(LOGO[y][x]) for y in range(LOGO_HPX) for x in range(LOGO_COLS) if LOGO_MASQUE[y][x]]
+    lmin, lmax = (min(encres), max(encres)) if encres else (0, 255)
+    def couleur(y, x, reflet):
+        c = LOGO[y][x]
+        if not LOGO_MASQUE[y][x]:
+            return c
+        t = (lum(c) - lmin) / max(lmax - lmin, 1)
+        r, g, b = (sombre[i] + (clair[i] - sombre[i]) * t for i in range(3))
+        if reflet is not None and abs(x - reflet) <= 3:
+            k = 1.0 - abs(x - reflet) / 4.0
+            r, g, b = r + (255 - r) * 0.7 * k, g + (255 - g) * 0.7 * k, b + (255 - b) * 0.7 * k
+        return (min(int(r), 255), min(int(g), 255), min(int(b), 255))
+    images, cellules0 = [], None
+    for i in range(n):
+        reflet = (-6 + (LOGO_COLS + 12) * i / (n // 2)) if i < n // 2 else None
+        lignes, cells = [], []
+        for cr in range(LOGO_ROWS):
+            buf, cfg, cbg, crow = [], None, None, []
+            for x in range(LOGO_COLS):
+                fg = _txt(*couleur(2 * cr, x, reflet))
+                bg = _fond(*couleur(2 * cr + 1, x, reflet))
+                crow.append(("▀", fg, bg))
+                if fg != cfg:
+                    buf.append(fg); cfg = fg
+                if bg != cbg:
+                    buf.append(bg); cbg = bg
+                buf.append("▀")
+            lignes.append("".join(buf) + BASE)
+            cells.append(crow)
+        images.append(lignes)
+        if cellules0 is None and reflet is None:
+            cellules0 = cells
+    return images, (cellules0 or cells)
+
+
+def appliquer_theme(nom):
+    """Active un thème (à chaud). Nom inconnu → Néon."""
+    global THEME, _LOGO_TEINTES, _LOGO_CELLS_THEME, _PLUIE_COUL, _IRIS_IN, _IRIS_OUT
+    if nom not in THEMES:
+        nom = "neon"
+    th = THEMES[nom]
+    THEME = nom
+    _IRIS_IN, _IRIS_OUT = th["iris"]
+    _PLUIE_COUL = th["pluie"]
+    if th["logo"] is None:
+        _LOGO_TEINTES = _LOGO_NEON
+        _LOGO_CELLS_THEME = _LOGO_CELLS[0] if _LOGO_CELLS else []
+    else:
+        _LOGO_TEINTES, _LOGO_CELLS_THEME = _logo_theme(*th["logo"])
+
+
+# ---------- La mascotte : Claude (normal / ange / démon), en pixels ----------
+# '.' vide · O corps · E yeux · H auréole · W ailes · R cornes · T queue
+_MASCOTTES = {
+    "claude": ["...........",
+               "...........",
+               "..OOOOOOO..",
+               "..OEOOOEO..",
+               "..OEOOOEO..",
+               "OOOOOOOOOOO",
+               "..OOOOOOO..",
+               "..OOOOOOO..",
+               "..O.O.O.O..",
+               "..O.O.O.O.."],
+    "ange":   ["...HHHHH...",
+               "...........",
+               "WWOOOOOOOWW",
+               "WWOEOOOEOWW",
+               ".WOEOOOEOW.",
+               "OOOOOOOOOOO",
+               "..OOOOOOO..",
+               "..OOOOOOO..",
+               "..O.O.O.O..",
+               "..O.O.O.O.."],
+    "demon":  ["..R.....R..",
+               "..RR...RR..",
+               "..OOOOOOO..",
+               "..OEOOOEO..",
+               "..OEOOOEO..",
+               "OOOOOOOOOOO",
+               "..OOOOOOO..",
+               "..OOOOOOOT.",
+               "..O.O.O.OT.",
+               "..O.O.O.O.T"],
+}
+_MASCOTTE_COUL = {
+    "claude": {"O": (217, 119, 87), "E": (24, 18, 16)},
+    "ange":   {"O": (242, 180, 150), "E": (40, 30, 26), "H": (255, 214, 90), "W": (246, 246, 252)},
+    "demon":  {"O": (178, 52, 38), "E": (255, 190, 60), "R": (128, 26, 26), "T": (150, 26, 24)},
+}
+MASC_L, MASC_H = 11, 5                       # 11 colonnes × 5 lignes (10 pixels de haut)
+_mascottes_pos = []                          # (ligne, colonne) des mascottes posées dans le menu
+
+
+def _cellules_mascotte(variante, yeux_fermes=False):
+    """La mascotte en demi-blocs ▀/▄ : liste de 5 lignes de cellules (char, fg, bg)."""
+    px = [list(r) for r in _MASCOTTES[variante]]
+    if yeux_fermes:                          # clignement : l'œil devient un trait
+        for x in range(MASC_L):
+            if px[3][x] == "E":
+                px[3][x] = "O"
+    coul = _MASCOTTE_COUL[variante]
+    lignes = []
+    for r in range(MASC_H):
+        row = []
+        for x in range(MASC_L):
+            h, b = coul.get(px[2 * r][x]), coul.get(px[2 * r + 1][x])
+            if h is None and b is None:
+                row.append([" ", "", None])          # case occupée (pas de pluie), vide
+            elif b is None:
+                row.append(["▀", _txt(*h), None])
+            elif h is None:
+                row.append(["▄", _txt(*b), None])
+            else:
+                row.append(["▀", _txt(*h), _fond(*b)])
+        lignes.append(row)
+    return lignes
+
+
+def _poser_mascottes(grille, W, haut, ml):
+    """Pose la mascotte du thème à gauche ET à droite du logo, s'il y a la place."""
+    global _mascottes_pos
+    _mascottes_pos = []
+    variante = THEMES[THEME]["mascotte"]
+    if not variante or ml < MASC_L + 1:
+        return
+    y = haut + max((LOGO_ROWS - MASC_H) // 2, 0)
+    cells = _cellules_mascotte(variante)
+    for x0 in (ml - MASC_L - 1, ml + LOGO_COLS + 1):
+        if x0 < 0 or x0 + MASC_L > W:
+            continue
+        for r in range(MASC_H):
+            if 0 <= y + r < len(grille):
+                grille[y + r][x0:x0 + MASC_L] = [list(c) for c in cells[r]]
+        _mascottes_pos.append((y, x0))
+
+
+def _animer_mascottes(f):
+    """Clignement des yeux de la mascotte, de temps en temps."""
+    variante = THEMES[THEME]["mascotte"]
+    if not (variante and _mascottes_pos and _grille_menu):
+        return
+    fermes = (f % 55) in (0, 1)
+    if (f % 55) not in (0, 1, 2):
+        return                                   # rien ne change → on ne touche à rien
+    cells = _cellules_mascotte(variante, yeux_fermes=fermes)
+    for (y, x0) in _mascottes_pos:
+        for r in range(MASC_H):
+            if 0 <= y + r < len(_grille_menu):
+                _grille_menu[y + r][x0:x0 + MASC_L] = [list(c) for c in cells[r]]
 
 
 def banniere():
@@ -983,7 +1184,7 @@ _ART_ENSEIGNE = {"♠": _SPADE_ART, "♣": _CLUB_ART}
 _LARG_CARTE, _HAUT_CARTE = 15, 14          # colonnes × lignes
 
 
-def _carte_as(kind, enseigne="♠"):
+def _carte_as(kind, enseigne="♠", encre=None):
     """Construit un as (faces avant/arrière) en cellules (char, fg, bg).
     kind 'clair' = carte blanche/encre noire · 'sombre' = l'inverse.
     enseigne : ♠ ou ♣ (dessin central + coins)."""
@@ -991,6 +1192,8 @@ def _carte_as(kind, enseigne="♠"):
         BG, INK, ED = (232, 235, 240), (22, 24, 32), (70, 74, 86)
     else:
         BG, INK, ED = (17, 19, 26), (223, 229, 239), (150, 158, 172)
+    if encre:                                      # encre aux couleurs du thème
+        INK = encre
     bg, ink, ed = _fond(*BG), _txt(*INK), _txt(*ED)
     inner = _LARG_CARTE - 2
     art = _ART_ENSEIGNE.get(enseigne, _SPADE_ART)
@@ -1024,26 +1227,16 @@ def _carte_as(kind, enseigne="♠"):
     return {"front": front, "back": dos, "w": _LARG_CARTE, "h": _HAUT_CARTE}
 
 
-_AS_CLAIR = None
-_AS_SOMBRE = None
-_AS_CENTRE = None
+_AS_THEME = {}
 
 
-def _as_caches():
-    """Les deux as de l'accueil : clair (white hat) ♠ + sombre (black hat) ♠."""
-    global _AS_CLAIR, _AS_SOMBRE
-    if _AS_CLAIR is None:
-        _AS_CLAIR = _carte_as("clair", "♠")
-        _AS_SOMBRE = _carte_as("sombre", "♠")
-    return _AS_CLAIR, _AS_SOMBRE
-
-
-def _as_centre():
-    """Les deux as blancs du MENU, comme la photo : A♣ (devant) + A♠ (derrière)."""
-    global _AS_CENTRE
-    if _AS_CENTRE is None:
-        _AS_CENTRE = (_carte_as("clair", "♣"), _carte_as("clair", "♠"))
-    return _AS_CENTRE
+def _as_du_theme():
+    """L'as de pique qui tourne au centre du menu, aux couleurs du thème."""
+    kind, encre = THEMES[THEME]["carte"]
+    cle = (kind, encre)
+    if cle not in _AS_THEME:
+        _AS_THEME[cle] = _carte_as(kind, "♠", encre)
+    return _AS_THEME[cle]
 
 
 def _poser_carte_spin(grille, W, H, ccx, ccy, carte, angle, epais=3):
@@ -1084,73 +1277,6 @@ def _poser_carte_spin(grille, W, H, ccx, ccy, carte, angle, epais=3):
                 rowg[gx] = srow[sx]
 
 
-def _poser_as_coins(grille, W, H, ang_g=0.0, ang_d=0.0):
-    """Les deux as (clair = white hat, sombre = black hat) posés en bas, dans les
-    coins noirs de l'écran (hors de l'amande de l'œil). Grand écran seulement."""
-    if W < 92 or H < 40:
-        return
-    clair, sombre = _as_caches()
-    cyb = H - _HAUT_CARTE // 2 - 2
-    xg = _LARG_CARTE // 2 + 3
-    xd = W - _LARG_CARTE // 2 - 3
-    _poser_carte_spin(grille, W, H, xg, cyb, clair, ang_g)
-    _poser_carte_spin(grille, W, H, xd, cyb, sombre, ang_d)
-
-
-def _intro_cartes(W, H, kb):
-    """Lever de rideau : deux as tournent à 360° au centre — un CLAIR (white hat)
-    et un SOMBRE (black hat). Ils accélèrent, ralentissent, se présentent de face,
-    puis s'effacent pour laisser place à l'œil."""
-    if H < 18 or W < 44:
-        return None
-    cx, cy, _, _, _, _, _ = _oeil_geo(W, H)
-    clair, sombre = _as_caches()
-    ccy = min(max(cy, _HAUT_CARTE // 2 + 1), H - _HAUT_CARTE // 2 - 4)
-    ecart = min(W // 2 - 10, 17)
-    xg, xd = cx - ecart, cx + ecart
-    rcap = min(ccy + _HAUT_CARTE // 2 + 2, H - 3)
-    cap1, cc1 = "WHITE HAT   ◇   BLACK HAT", _txt(212, 220, 234)
-    cap2, cc2 = "deux faces · une seule main", _txt(118, 128, 142)
-
-    def img(ang_g, ang_d, p):
-        grille = _nouvelle_grille(W, H)
-        _poser_carte_spin(grille, W, H, xg, ccy, clair, ang_g)
-        _poser_carte_spin(grille, W, H, xd, ccy, sombre, ang_d)
-        if p > 0.35:
-            _poser_centre(grille, W, H, rcap, cap1, cc1)
-        if p > 0.55:
-            _poser_centre(grille, W, H, rcap + 1, cap2, cc2)
-        _ecrire(_emettre(grille))
-
-    frames = 94
-    tours = 3.0
-    for f in range(frames):                          # grande rotation qui ralentit
-        t = f / (frames - 1)
-        e = 1.0 - (1.0 - t) ** 2.4                    # ease-out
-        ang = tours * 2 * math.pi * e
-        img(ang, -ang, t)
-        k = kb.get()
-        if k:
-            return k
-        time.sleep(0.012)
-    for _ in range(16):                              # pose : face caméra
-        img(0.0, 0.0, 1.0)
-        k = kb.get()
-        if k:
-            return k
-        time.sleep(0.03)
-    for f in range(12):                              # sortie : les cartes repartent
-        t = f / 11.0
-        ang = (math.pi / 2) * t
-        img(ang, -ang, 1.0)
-        if kb.get():
-            break
-        time.sleep(0.02)
-    _ecrire(BASE + "\x1b[2J\x1b[H")
-    _reinit_cadre()                                  # l'écran est effacé → prochain cadre plein
-    return None
-
-
 def _oeil_ouverture(W, H, kb):
     """L'œil GÉANT s'ouvre : deux clignements puis grande ouverture, avec un léger
     balayage du regard. Rendu fluide. Renvoie 'enter'/'esc' si on appuie."""
@@ -1185,7 +1311,6 @@ def _oeil_revele(W, H, slogan, kb):
         p = (f + 1) / frames
         grille = _nouvelle_grille(W, H)
         _dessiner_oeil(grille, W, H, 1.0, 0.0, 0.0, 1.0 + 0.05 * math.sin(f * 0.3), 900 + f)
-        _poser_as_coins(grille, W, H)
         n = int(len(slogan) * p)
         aff = "".join(slogan[i] if i < n else random.choice(_GARB) for i in range(len(slogan)))
         _poser_slogan(grille, W, H, aff)
@@ -1221,7 +1346,6 @@ def _oeil_frisson(W, H, slogan, kb):
         jit = random.uniform(-0.7, 0.7) if (0.20 < t < 0.50) else 0.0   # tremblement
         grille = _nouvelle_grille(W, H)
         _dessiner_oeil(grille, W, H, ouv, jit, 0.0, dil, 1500 + f, veines=veg, ri_scale=ri)
-        _poser_as_coins(grille, W, H)
         _poser_slogan(grille, W, H, slogan)
         _poser_invite(grille, W, H, allume=True)
         _ecrire(_emettre(grille))
@@ -1288,7 +1412,6 @@ def _oeil_attente(W, H, slogan, kb):
         if besoin:                                    # on NE dessine QUE si quelque chose bouge
             grille = _nouvelle_grille(W, H)
             _dessiner_oeil(grille, W, H, ouv, 0.0, 0.0, 1.0, f)   # regard fixe : il te FIXE
-            _poser_as_coins(grille, W, H)             # as fixes (sceau white/black hat)
             _poser_slogan(grille, W, H, slogan)
             _poser_invite(grille, W, H, allume=invite_on)
             _ecrire(_emettre(grille))
@@ -1321,7 +1444,7 @@ class _GardeTaille:
 
 
 def _accueil_oeil(modele):
-    """Lève le rideau : cartes qui tournent → l'œil géant s'ouvre → slogan →
+    """Lève le rideau : l'œil géant s'ouvre → slogan →
     frisson (iris minuscule) → attente. ENTRÉE plonge dans la pupille (menu),
     ÉCHAP quitte. True = entrer, False = quitter."""
     global _intro_offset, _intro_voffset, _oeil_seed
@@ -1335,7 +1458,6 @@ def _accueil_oeil(modele):
         with _Clavier() as kb:
             garde = _GardeTaille(kb, (W, H))
             phases = (
-                lambda: _intro_cartes(W, H, garde),          # les deux as tournent (360°)
                 lambda: _oeil_ouverture(W, H, garde),        # l'œil géant s'ouvre
                 lambda: _oeil_revele(W, H, slogan, garde),   # slogan + invite
                 lambda: _oeil_frisson(W, H, slogan, garde),  # l'iris devient minuscule
@@ -1456,13 +1578,11 @@ _VIT_CARTES = 0.13                     # vitesse de rotation (rad / image ≈ 1 
 
 
 def _dessiner_cartes_centre(grille, W, angle):
-    """Pose la paire d'as (A♠ derrière-droite, A♣ devant-gauche) tournés de `angle`."""
+    """Pose l'as qui tourne (un seul), tourné de `angle`."""
     if not _cartes_actif:
         return
     H = len(grille)
-    clubs, spades = _as_centre()
-    _poser_carte_spin(grille, W, H, _cartes_cx + 3, _cartes_cy, spades, angle)   # derrière
-    _poser_carte_spin(grille, W, H, _cartes_cx - 3, _cartes_cy, clubs, angle)    # devant
+    _poser_carte_spin(grille, W, H, _cartes_cx, _cartes_cy, _as_du_theme(), angle)   # UN seul as
 
 
 def _animer_cartes_centre(f):
@@ -1674,7 +1794,8 @@ def _repaint_menu(i_teinte, tetes, f):
     L'appelant enveloppe le tout dans une MISE À JOUR SYNCHRONISÉE (mode 2026) pour
     que le terminal affiche l'image d'un seul coup (aucune déchirure).
     La grille tient toujours dans la fenêtre (voir _composer_menu) : rien ne déborde."""
-    _animer_cartes_centre(f)                      # fait tourner les as (A♣ + A♠)
+    _animer_cartes_centre(f)                      # fait tourner l'as
+    _animer_mascottes(f)                          # la mascotte cligne des yeux
     W = len(_grille_menu[0])
     dec = _menu_offset
     espaces = " " * dec
@@ -1689,11 +1810,14 @@ def _repaint_menu(i_teinte, tetes, f):
                 k = int(tetes[x][0]) - ry
                 if 0 <= k < tetes[x][2]:
                     ch2 = CARS_PLUIE[(x * 7 + ry * 13 + f) % len(CARS_PLUIE)]
+                    tete, bas_c, haut_c = _PLUIE_COUL
                     if k == 0:
-                        dfg = _txt(120, 220, 150)
+                        dfg = _txt(*tete)
                     else:
-                        v = 1 - k / tetes[x][2]
-                        dfg = _txt(int(22 + 50 * v), int(60 + 105 * v), int(40 + 65 * v))
+                        v = round((1 - k / tetes[x][2]) * 10) / 10      # 11 nuances (cache)
+                        dfg = _txt(int(bas_c[0] + (haut_c[0] - bas_c[0]) * v),
+                                   int(bas_c[1] + (haut_c[1] - bas_c[1]) * v),
+                                   int(bas_c[2] + (haut_c[2] - bas_c[2]) * v))
                     dbg = FOND
                 else:
                     ch2, dfg, dbg = " ", TEXTE, FOND
@@ -2144,7 +2268,7 @@ def _composer_menu(modele):
     Sinon le terminal replie le texte et fait défiler l'écran : tout se décale."""
     global _ligne_horloge, _col_horloge, _ip_cache, _sys_col, _sys_row0, _sys_inner
     global _cartes_actif, _cartes_cx, _cartes_cy, _cartes_r0, _cartes_r1, _cartes_x0, _cartes_x1
-    global _titre_haut, _logo_actif, _ligne_saisie
+    global _titre_haut, _logo_actif, _ligne_saisie, _mascottes_pos
     taille = _Taille()
     COL, LIG = taille.columns, taille.lines
     W = max(min(COL - 1, 400), 20)                     # jamais plus large que la fenêtre
@@ -2155,7 +2279,7 @@ def _composer_menu(modele):
     _col_horloge = max(W - 10, 0)
 
     # ---------- LARGEUR : combien de colonnes d'encadrés, et de quelle largeur ----------
-    GAP_CARTES = 2 * _LARG_CARTE - 2                   # couloir central (~28 colonnes)
+    GAP_CARTES = _LARG_CARTE + 7                       # couloir central (un as + sa tranche)
     haut_1col = 26 + 2                                 # 4 encadrés empilés + barre + saisie
     cartes_centre = W >= 2 * LARGEUR_BOITE + GAP_CARTES + 2
     if W >= 2 * LARGEUR_BOITE + 3:                     # 2 colonnes, pleine largeur
@@ -2172,7 +2296,8 @@ def _composer_menu(modele):
                             ("16", "Académie (apprendre à coder)")], C_PIQUE),
         ("♥ BLACK JACK · 21", [("15", "JOUER · partie de Black Jack"), ("5", "Table de stratégie"),
                                ("6", "Entraîneur Hi-Lo (compter)"),
-                               ("7", "Quiz : que faire ?")], C_COEUR),
+                               ("7", "Quiz : que faire ?"),
+                               ("19", "Thèmes & mascotte")], C_COEUR),
         ("♦ SYSTÈME · ma machine", [("8", "Infos système"), ("9", "Espace disque"),
                                     ("10", "Lancer un programme"),
                                     ("14", "Paramètres (IA, Spotify, son…)"),
@@ -2238,13 +2363,15 @@ def _composer_menu(modele):
     _poser_horloge(lignes, W)
     r = 1 + esp_barre
     _logo_actif = avec_logo
+    _mascottes_pos = []
     ml = max((W - LOGO_COLS) // 2, 0)
     if avec_logo:                                     # grand logo (teinte cyclée à l'affichage)
         _titre_haut = r
         for cr in range(LOGO_ROWS):
             row = at(r + cr)
             for x in range(LOGO_COLS):
-                row[ml + x] = ["▀", _txt(*LOGO[2 * cr][x]), _fond(*LOGO[2 * cr + 1][x])]
+                row[ml + x] = list(_LOGO_CELLS_THEME[cr][x])    # logo aux couleurs du thème
+        _poser_mascottes(lignes, W, r, ml)            # thèmes Claude : la mascotte de chaque côté
         r += LOGO_ROWS + esp_logo
         if sig_on:                                    # signature A♠ J♠ · 21
             for rr in range(r, r + 3):
