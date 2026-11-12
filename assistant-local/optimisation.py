@@ -328,6 +328,7 @@ def rapport_diagnostic():
 def menu(conf):
     """Menu de l'optimisation. conf n'est pas modifié (rien ici n'a de réglage
     à mémoriser) mais est reçu pour rester cohérent avec les autres écrans."""
+    ui.ecran_defilant()          # texte long : écran qui défile (molette utilisable)
     while True:
         ui.effacer()
         ui.info("\n  ⚙  OPTIMISATION — diagnostic, nettoyage, démarrage\n", ui.CYAN)

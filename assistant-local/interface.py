@@ -140,68 +140,38 @@ def effacer():
     _ecrire(BASE + "\x1b[2J\x1b[H")
 
 
-def _conhost_classique():
-    """Vrai ? → console Windows héritée « nue » (conhost), où l'on peut régler la
-    taille du buffer sans risque. Faux pour Windows Terminal / VS Code / autres :
-    là, toucher au buffer DÉSYNCHRONISE la taille réelle et casse l'affichage."""
-    if os.name != "nt":
-        return False
-    for v in ("WT_SESSION", "WT_PROFILE_ID", "TERM_PROGRAM",
-              "VSCODE_INJECTION", "VSCODE_PID", "ConEmuPID"):
-        if os.environ.get(v):
-            return False
-    return True
-
-
-def _agrandir_conhost():
-    """conhost SEULEMENT : buffer ET fenêtre à la taille max de l'écran (sûr ici,
-    car on règle les deux ensemble → pas de désynchronisation)."""
-    import ctypes
-    k32, u32 = ctypes.windll.kernel32, ctypes.windll.user32
-
-    class _COORD(ctypes.Structure):
-        _fields_ = [("X", ctypes.c_short), ("Y", ctypes.c_short)]
-
-    class _RECT(ctypes.Structure):
-        _fields_ = [("Left", ctypes.c_short), ("Top", ctypes.c_short),
-                    ("Right", ctypes.c_short), ("Bottom", ctypes.c_short)]
-
-    hout = k32.GetStdHandle(-11)
-    k32.GetLargestConsoleWindowSize.restype = _COORD
-    maxs = k32.GetLargestConsoleWindowSize(hout)
-    if maxs.X < 10 or maxs.Y < 5:                    # valeurs douteuses → on ne touche à rien
-        return
-    cols = min(maxs.X - 1, 400)
-    lines = min(maxs.Y - 1, 160)
-    k32.SetConsoleScreenBufferSize(hout, _COORD(cols, lines))
-    k32.SetConsoleWindowInfo(hout, True, ctypes.byref(_RECT(0, 0, cols - 1, lines - 1)))
-    hwnd = k32.GetConsoleWindow()
-    if hwnd:
-        u32.ShowWindow(hwnd, 3)                      # SW_MAXIMIZE
-
-
 def agrandir_fenetre():
-    """Agrandit la fenêtre SANS JAMAIS casser l'affichage, puis le programme
-    S'ADAPTE à la taille qu'il obtient (il remplit l'espace disponible, sur
-    n'importe quel écran). On ne force la taille QUE sur une console conhost nue ;
-    sur Windows Terminal / VS Code / autres, on demande juste la maximisation
-    (inoffensive) et on s'adapte — pour remplir, il suffit de maximiser la fenêtre."""
-    if _conhost_classique():                        # conhost nu → remplissage sûr
-        try:
-            _agrandir_conhost()
-        except Exception:
-            pass
-    elif os.name == "nt":                           # WT & co : maximisation douce, sans buffer
-        try:
-            import ctypes
-            h = ctypes.windll.kernel32.GetConsoleWindow()
-            if h:
-                ctypes.windll.user32.ShowWindow(h, 3)
-        except Exception:
-            pass
+    """Agrandit la fenêtre UNIQUEMENT quand c'est sans aucun risque.
+
+    Règle d'or : on ne modifie JAMAIS la taille du buffer de la console. C'est ce
+    qui détruisait l'affichage : sous Windows Terminal (même lancé par un simple
+    double-clic, où AUCUNE variable d'environnement ne permet de le reconnaître),
+    le programme croyait alors disposer d'un écran géant (400×160) et dessinait
+    hors de la fenêtre → texte replié, défilement, bouillie.
+
+    Seul cas traité : une VRAIE console Windows classique, reconnue par la classe
+    de sa fenêtre (« ConsoleWindowClass ») et visible à l'écran. On la maximise,
+    exactement comme un clic sur le bouton « agrandir ». Partout ailleurs (Windows
+    Terminal, VS Code, Linux, macOS…) on ne touche à rien : le programme lit la
+    taille réelle de la fenêtre et s'y ADAPTE."""
+    if os.name != "nt":
+        return
     try:
-        _ecrire("\x1b[9;1t")                         # maximise (WT / xterm), ignoré ailleurs
-        time.sleep(0.12)                            # laisse la fenêtre s'ajuster avant de lire la taille
+        import ctypes
+        k32, u32 = ctypes.windll.kernel32, ctypes.windll.user32
+        k32.GetConsoleWindow.restype = ctypes.c_void_p     # poignée complète (64 bits)
+        hwnd = k32.GetConsoleWindow()
+        if not hwnd:
+            return
+        h = ctypes.c_void_p(hwnd)
+        if not u32.IsWindowVisible(h):
+            return                                   # pseudo-fenêtre cachée (terminal moderne)
+        classe = ctypes.create_unicode_buffer(64)
+        u32.GetClassNameW(h, classe, 64)
+        if classe.value != "ConsoleWindowClass":
+            return                                   # pas une console classique → on n'y touche pas
+        u32.ShowWindow(h, 3)                         # SW_MAXIMIZE (comme le bouton « agrandir »)
+        time.sleep(0.15)                             # laisse la console adopter sa nouvelle taille
     except Exception:
         pass
 
@@ -217,20 +187,44 @@ def initialiser():
         sys.stdin.reconfigure(encoding="utf-8")
     except Exception:
         pass
-    _ecrire("\x1b[?1049h")            # écran alternatif
+    _ecran_alternatif(True)           # écran alternatif (plein écran figé)
     # coupe tout rapport de souris/molette et le collage encadré : en écran
     # alternatif, la molette enverrait sinon des séquences qui polluent la saisie.
     _ecrire("\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?1015l\x1b[?2004l")
     _ecrire(BASE + "\x1b[2J\x1b[H")
 
 
+_ecran_alt = False                   # sommes-nous sur l'écran alternatif ?
+
+
+def _ecran_alternatif(actif):
+    """Bascule entre deux écrans du terminal (ne fait rien si on y est déjà) :
+      · ALTERNATIF : plein écran FIGÉ, sans historique → accueil, menu, jeu, entraîneurs ;
+      · NORMAL     : le texte DÉFILE et reste dans l'historique → on peut REMONTER à la
+                     molette pour relire une longue réponse de l'IA ou un long résultat."""
+    global _ecran_alt
+    if actif == _ecran_alt:
+        return
+    _ecran_alt = actif
+    _ecrire("\x1b[?1049h" if actif else "\x1b[?1049l")
+
+
+def ecran_defilant():
+    """Passe sur l'écran NORMAL (défilant, molette utilisable) et le nettoie. Pour les
+    outils qui affichent du texte long (optimisation, coffre…). Le retour au menu
+    (afficher_menu) rebascule tout seul sur l'écran alternatif."""
+    _ecran_alternatif(False)
+    _ecrire(BASE + "\x1b[2J\x1b[H")
+
+
 def restaurer():
-    """Revient à l'écran normal du terminal (fin propre, sans logos résiduels)."""
+    """Fin propre : on rend le terminal dans son état normal."""
     _ecrire("\x1b[?25h")             # réaffiche le curseur
     _ecrire("\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?1015l\x1b[?2004l")
-    _ecrire(BASE + "\x1b[2J\x1b[H")
-    _ecrire("\x1b[?1049l")           # quitte l'écran alternatif
-    _ecrire(RESET)
+    if _ecran_alt:                   # écran alternatif : on l'efface puis on le quitte
+        _ecrire(BASE + "\x1b[2J\x1b[H")
+        _ecran_alternatif(False)
+    _ecrire(RESET + "\n")            # écran normal : on laisse la conversation visible
 
 
 # ---------- Cartes ----------
@@ -1277,8 +1271,8 @@ def _oeil_attente(W, H, slogan, kb):
     besoin = True                                    # redessiner ce tour ?
     while True:
         d = _dim()                                   # la fenêtre a-t-elle changé de taille ?
-        Wn = max(min(d[0] - 1, 400), 40)
-        Hn = max(min(d[1] - 1, 160), 16)
+        Wn = max(min(d[0] - 1, 400), 8)
+        Hn = max(min(d[1] - 1, 160), 4)
         if (Wn, Hn) != (W, H):                       # oui → on se ré-adapte (pas de bouillie)
             W, H = Wn, Hn
             _ecrire(BASE + "\x1b[2J\x1b[H")
@@ -1316,8 +1310,8 @@ def _accueil_oeil(modele):
     _intro_offset = _intro_voffset = 0
     _reinit_cadre()                                  # premier cadre = plein écran
     taille = _Taille()
-    W = max(min(taille.columns - 1, 400), 40)
-    H = max(min(taille.lines - 1, 160), 16)
+    W = max(min(taille.columns - 1, 400), 8)         # la taille RÉELLE de la fenêtre,
+    H = max(min(taille.lines - 1, 160), 4)           # jamais plus (sinon tout se décale)
     slogan = random.choice(_SLOGANS)
     _oeil_seed = random.randint(1, 10 ** 6)          # veines fixes pour ce lancement
     _cacher_curseur()
@@ -1426,6 +1420,8 @@ _titre_marge = 0           # marge gauche du logo dans le menu
 _taille_menu = None        # taille du terminal au moment de composer le menu
 _modele_menu = ""          # nom affiché, pour recomposer après un redimensionnement
 _menu_offset = 0           # marge gauche pour centrer le menu dans la fenêtre
+_logo_actif = True         # le grand logo est-il affiché ? (non si la fenêtre est trop petite)
+_ligne_saisie = 1          # ligne de l'écran (1 = tout en haut) où l'on tape, sous le menu
 
 # --- Les deux as qui tournent au centre du menu (A♣ + A♠, comme la photo) ---
 _cartes_actif = False
@@ -1650,15 +1646,15 @@ def _menu_reinit():
 def _repaint_menu(i_teinte, tetes, f):
     """Repeint TOUT le menu (pluie + titre teinté + les deux as qui tournent) à
     chaque image — donc ça se corrige tout seul (pas d'accumulation d'erreurs),
-    MAIS :
-      · enveloppé dans une MISE À JOUR SYNCHRONISÉE (mode 2026) → le terminal
-        affiche l'image d'un seul coup : AUCUNE déchirure (souci Windows Terminal) ;
-      · SANS effacement de ligne (\\x1b[K) → pas de « flash » des cartes blanches."""
+    SANS effacement de ligne (\\x1b[K) → pas de « flash » des cartes blanches.
+    L'appelant enveloppe le tout dans une MISE À JOUR SYNCHRONISÉE (mode 2026) pour
+    que le terminal affiche l'image d'un seul coup (aucune déchirure).
+    La grille tient toujours dans la fenêtre (voir _composer_menu) : rien ne déborde."""
     _animer_cartes_centre(f)                      # fait tourner les as (A♣ + A♠)
     W = len(_grille_menu[0])
     dec = _menu_offset
     espaces = " " * dec
-    buf = [_SYNC_DEBUT, "\x1b7"]                   # sync + sauve le curseur (ligne de saisie)
+    buf = ["\x1b7"]                               # sauve le curseur
     for ry in range(_menu_bas):
         row = _grille_menu[ry]
         bout = ["\x1b[%d;1H" % (ry + 1), BASE, espaces]   # position, PAS de \x1b[K
@@ -1685,11 +1681,10 @@ def _repaint_menu(i_teinte, tetes, f):
                 bout.append(dbg); cbg = dbg
             bout.append(ch2)
         buf.append("".join(bout))
-        if _titre_haut <= ry < _titre_haut + LOGO_ROWS and _LOGO_TEINTES:   # logo teinté par-dessus
-            ligne = _LOGO_TEINTES[i_teinte][ry - _titre_haut]
+        if _logo_actif and _LOGO_TEINTES and _titre_haut <= ry < _titre_haut + LOGO_ROWS:
+            ligne = _LOGO_TEINTES[i_teinte][ry - _titre_haut]         # logo teinté par-dessus
             buf.append("\x1b[%d;%dH" % (ry + 1, 1 + dec + _titre_marge) + BASE + ligne)
     buf.append("\x1b8")                            # restaure le curseur
-    buf.append(_SYNC_FIN)
     return "".join(buf)
 
 
@@ -1736,7 +1731,7 @@ class _Pulsation(threading.Thread):
             if f % 12 == 0:
                 _maj_moniteur(_grille_menu, W)
             teinte = (i % n) if TITRE_CYCLE else 0
-            _ecrire(_repaint_menu(teinte, tetes, f))
+            _ecrire(_SYNC_DEBUT + _repaint_menu(teinte, tetes, f) + _SYNC_FIN)
             i += 1
             f += 1
             self.stop.wait(0.09)
@@ -1759,7 +1754,7 @@ def arreter_pulsation():
         _pulse = None
         if _grille_menu:
             _menu_reinit()
-            _ecrire(_repaint_menu(0, None, 0))   # menu net, sans pluie
+            _ecrire(_SYNC_DEBUT + _repaint_menu(0, None, 0) + _SYNC_FIN)   # menu net, sans pluie
 
 
 def _tetes_pluie(W, bas, rng):
@@ -1775,15 +1770,31 @@ def _tetes_pluie(W, bas, rng):
 
 def _rendu_ligne_saisie(texte, W):
     """Ligne d'invite dessinée SOUS le menu. Comme on l'affiche nous-mêmes, ce
-    qu'on tape reste toujours visible (pas de course avec l'écho du terminal)."""
-    y = _menu_bas + 2
-    prompt = "♠ black-jack ▸ "
-    marge = _menu_offset + 2
-    dispo = max(W - marge - len(prompt) - 2, 8)
+    qu'on tape reste toujours visible (pas de course avec l'écho du terminal).
+    Elle tient TOUJOURS dans la largeur W de la grille (jamais de retour à la
+    ligne) et se trouve à _ligne_saisie, garantie dans la fenêtre."""
+    prompt = "♠ black-jack ▸ " if W >= 36 else "▸ "
+    marge = 2 if W >= 36 else 0
+    dispo = max(W - marge - len(prompt) - 2, 1)
     vis = texte[-dispo:] if len(texte) > dispo else texte
-    return (f"\x1b[{y};1H" + BASE + "\x1b[K" + " " * marge
+    reste = max(W - marge - len(prompt) - len(vis) - 1, 0)   # complète la ligne (pas de \x1b[K)
+    return (f"\x1b[{_ligne_saisie};1H" + BASE + " " * (_menu_offset + marge)
             + OR + GRAS + prompt + BASE + BLANC + vis
-            + _txt(120, 235, 150) + "█" + BASE)
+            + _txt(120, 235, 150) + "█" + BASE + " " * reste)
+
+
+def _saisie_menu_statique():
+    """Saisie classique sous un menu NON animé. Sur un vrai terminal on se place sur
+    la ligne de saisie prévue, SANS saut de ligne : un « \\n » de trop ferait défiler
+    un menu qui tient pile dans la fenêtre."""
+    if not (_grille_menu and sys.stdout.isatty()):
+        return demander_saisie()
+    _ecrire(f"\x1b[{_ligne_saisie};1H" + BASE + "\x1b[K"
+            + OR + GRAS + "  ♠ toi ▸ " + RESET + FOND + BLANC)
+    try:
+        return input()
+    finally:
+        _ecrire(BASE)
 
 
 def saisie_menu():
@@ -1791,7 +1802,7 @@ def saisie_menu():
     s'affiche toujours. Renvoie la ligne validée (Entrée)."""
     if not (_grille_menu and MENU_ANIME and ANIMATIONS and _LOGO_TEINTES
             and sys.stdout.isatty()):
-        return demander_saisie()                 # repli : saisie classique
+        return _saisie_menu_statique()           # repli : saisie classique
     rng = random.Random()
     W, bas = len(_grille_menu[0]), _menu_bas
     tetes = _tetes_pluie(W, bas, rng)
@@ -1802,7 +1813,7 @@ def saisie_menu():
         with _Clavier() as kb:
             if not kb.ok:                        # pas de clavier brut → repli
                 _montrer_curseur()
-                return demander_saisie()
+                return _saisie_menu_statique()
             while True:
                 if _dim() != _taille_menu:       # fenêtre redimensionnée
                     afficher_menu(_modele_menu)
@@ -1820,7 +1831,8 @@ def saisie_menu():
                 if f % 12 == 0:
                     _maj_moniteur(_grille_menu, W)
                 teinte = (f % n) if TITRE_CYCLE else 0
-                _ecrire(_repaint_menu(teinte, tetes, f) + _rendu_ligne_saisie("".join(texte), W))
+                _ecrire(_SYNC_DEBUT + _repaint_menu(teinte, tetes, f)
+                        + _rendu_ligne_saisie("".join(texte), W) + _SYNC_FIN)   # image d'un seul coup
                 for ev in kb.evenements():
                     quoi = ev[0]
                     if quoi == "enter":
@@ -1845,11 +1857,14 @@ def ligne_entete(gauche, droite=""):
     return BAR_BG + _txt(205, 215, 235) + (gauche + " " * plein + droite)[:W] + BASE
 
 
-def debut_conversation(sous_titre="", droite="« menu » pour revenir  "):
-    """Quitte le menu animé pour un écran propre (conversation IA / jeu / sortie)."""
+def debut_conversation(sous_titre="", droite="« menu » pour revenir  ", defilement=False):
+    """Quitte le menu animé pour un écran propre (conversation IA / jeu / sortie).
+    defilement=True → écran NORMAL : le texte défile et on peut remonter à la molette
+    (conversation avec l'IA, commandes système). Sinon écran figé (jeu, entraîneurs)."""
     global sur_menu
     sur_menu = False
     _montrer_curseur()
+    _ecran_alternatif(not defilement)
     _ecrire(BASE + "\x1b[2J\x1b[H")
     W = min(largeur(), 400)
     gauche = "  ◢ BLACK JACK ◣" + (f"   ·   {sous_titre}" if sous_titre else "")
@@ -1858,8 +1873,13 @@ def debut_conversation(sous_titre="", droite="« menu » pour revenir  "):
 
 
 def dessiner(lignes):
-    """Redessine tout l'écran sur place (sans effacer d'abord : pas de scintillement)."""
-    _ecrire("\x1b[H" + "".join(BASE + l + "\x1b[K\n" for l in lignes) + "\x1b[J")
+    """Redessine tout l'écran sur place (sans effacer d'abord : pas de scintillement).
+    On n'écrit jamais plus de lignes que la fenêtre n'en contient : sinon l'écran
+    défile d'un cran à chaque image et tout se décale (fenêtre trop petite → le bas
+    est simplement coupé, mais l'affichage reste stable)."""
+    lignes = lignes[:max(_dim()[1] - 1, 1)]
+    _ecrire(_SYNC_DEBUT + "\x1b[H" + "".join(BASE + l + "\x1b[K\n" for l in lignes)
+            + "\x1b[J" + _SYNC_FIN)
 
 
 def vider_clavier():
@@ -1923,10 +1943,12 @@ C_CARREAU = _txt(240, 182, 84)   # ♦ ambre / or
 C_TREFLE = _txt(84, 212, 150)    # ♣ émeraude
 
 
-def _boite_cellules(titre, entrees, couleur):
-    """Un panneau élégant (coins arrondis, titre à gauche) en cellules (char,fg,bg)."""
-    dedans = LARGEUR_BOITE - 2
-    t = f"─ {titre} "
+def _boite_cellules(titre, entrees, couleur, largeur=None):
+    """Un panneau élégant (coins arrondis, titre à gauche) en cellules (char,fg,bg).
+    `largeur` : largeur totale de l'encadré (par défaut LARGEUR_BOITE) — il rétrécit
+    sur une fenêtre étroite, les libellés trop longs sont alors coupés proprement."""
+    dedans = max((largeur or LARGEUR_BOITE) - 2, 4)
+    t = f"─ {titre} "[:dedans]
     reste = max(dedans - len(t), 0)
     rows = [[(ch, couleur, None) for ch in "╭" + t + "─" * reste + "╮"]]
     for num, label in entrees:
@@ -2046,7 +2068,8 @@ def montrer_strategie():
     """Table de stratégie de base : les 3 tableaux côte à côte si la fenêtre est large,
     sinon les uns sous les autres."""
     import strategie as st
-    debut_conversation("STRATÉGIE DE BASE · 21", droite="")
+    # écran DÉFILANT : si la table est plus haute que la fenêtre, on remonte à la molette
+    debut_conversation("STRATÉGIE DE BASE · 21", droite="", defilement=True)
 
     def lignes_bloc(titre, lignes, larg):
         out = [OR + GRAS + "▸ " + titre + BASE,
@@ -2061,7 +2084,8 @@ def montrer_strategie():
     _ecrire("\n  " + _txt(120, 210, 235) + "Colonnes : carte visible du croupier  "
             + "(2 3 4 5 6 7 8 9 10 A)" + BASE + "\n\n")
     larg_bloc = 7 + 10 * 3
-    if largeur() >= 3 * larg_bloc + 2 * 4 + 4:                      # côte à côte (cellules de 3)
+    ecart = min((largeur() - 1 - 2 - 3 * larg_bloc) // 2, 4)       # espace entre les tableaux
+    if ecart >= 1:                                                 # côte à côte (dès 116 colonnes)
         cols = [lignes_bloc(t, l, 3) for t, l in blocs]
         haut = max(len(c) for c in cols)
         for i in range(haut):
@@ -2069,7 +2093,7 @@ def montrer_strategie():
             for c in cols:
                 cell = c[i] if i < len(c) else ""
                 morceaux.append(cell + " " * max(larg_bloc - _long_visible(cell), 0))
-            _ecrire("  " + "    ".join(morceaux) + BASE + "\n")
+            _ecrire("  " + (" " * ecart).join(morceaux) + BASE + "\n")
     else:                                                          # empilé (cellules de 4)
         for t, l in blocs:
             for ligne in lignes_bloc(t, l, 4):
@@ -2084,27 +2108,39 @@ def montrer_strategie():
 
 
 def _composer_menu(modele):
-    """L'écran principal, épuré et centré : barre, logo, signature A♠ J♠,
-    les 4 sections du menu, puis l'invite (plus de panneaux latéraux)."""
+    """L'écran principal, qui S'ADAPTE à la fenêtre réelle, en largeur ET en hauteur.
+
+    Largeur :  ≥ 118 col. → 2 colonnes d'encadrés + couloir central (les as qui tournent)
+               ≥ 76 col.  → 2 colonnes (encadrés rétrécis si besoin)
+               sinon      → 1 seule colonne d'encadrés empilés
+    Hauteur :  on part du strict nécessaire (barre + encadrés + ligne de saisie), puis
+               on ajoute logo, aide, lignes vides, signature… TANT QU'IL RESTE des lignes.
+
+    Garantie : la grille ne dépasse JAMAIS la fenêtre (ni en colonnes ni en lignes).
+    Sinon le terminal replie le texte et fait défiler l'écran : tout se décale."""
     global _ligne_horloge, _col_horloge, _ip_cache, _sys_col, _sys_row0, _sys_inner
     global _cartes_actif, _cartes_cx, _cartes_cy, _cartes_r0, _cartes_r1, _cartes_x0, _cartes_x1
+    global _titre_haut, _logo_actif, _ligne_saisie
     taille = _Taille()
-    # Les 4 encadrés sont écartés pour laisser un COULOIR CENTRAL où les deux as
-    # (A♣ + A♠) tournent en permanence — si la fenêtre est assez large.
-    _GAP_CARTES = 2 * _LARG_CARTE - 2                  # ~28 colonnes au centre
-    cartes_centre = (taille.columns - 1) >= (2 * LARGEUR_BOITE + _GAP_CARTES + 2)
-    gap = _GAP_CARTES if cartes_centre else 3
-    # la pluie remplit toute la largeur ; jamais plus étroit que le logo (sinon
-    # sa pose déborderait de la grille sur une fenêtre très étroite)
-    W = max(min(taille.columns - 1, 400), 2 * LARGEUR_BOITE + gap, LOGO_COLS)
+    COL, LIG = taille.columns, taille.lines
+    W = max(min(COL - 1, 400), 20)                     # jamais plus large que la fenêtre
     if not _ip_cache:
         _ip_cache = _ip_locale()
-    centre_w = 2 * LARGEUR_BOITE + gap
-    marge = max((W - centre_w) // 2, 0)                # menu centré (plus de panneaux latéraux)
     _sys_col = _sys_row0 = -1
-    ml = max((W - LOGO_COLS) // 2, 0)
     _ligne_horloge = 0
     _col_horloge = max(W - 10, 0)
+
+    # ---------- LARGEUR : combien de colonnes d'encadrés, et de quelle largeur ----------
+    GAP_CARTES = 2 * _LARG_CARTE - 2                   # couloir central (~28 colonnes)
+    haut_1col = 26 + 2                                 # 4 encadrés empilés + barre + saisie
+    cartes_centre = W >= 2 * LARGEUR_BOITE + GAP_CARTES + 2
+    if W >= 2 * LARGEUR_BOITE + 3:                     # 2 colonnes, pleine largeur
+        deux_col, lb = True, LARGEUR_BOITE
+    elif W >= 76 or (W >= 56 and LIG < haut_1col):     # 2 colonnes rétrécies
+        deux_col, lb = True, (W - 3) // 2
+    else:                                              # fenêtre étroite : 1 colonne
+        deux_col, lb = False, max(min(LARGEUR_BOITE, W - 2), 12)
+    gap = GAP_CARTES if cartes_centre else 3
     sections = [
         ("♠ TABLE · L'IA", [("1", "Discuter (tape ton message)"), ("2", "Recherche web sourcée"),
                             ("3", "CODEX · coder (C++, Python…)"),
@@ -2121,7 +2157,38 @@ def _composer_menu(modele):
         ("♣ RÉSEAU · ma connexion", [("11", "Mon adresse IP"), ("12", "Tester ma connexion (ping)"),
                                      ("13", "Mes connexions actives")], C_TREFLE),
     ]
-    boites = [_boite_cellules(*s) for s in sections]
+    boites = [_boite_cellules(*s, largeur=lb) for s in sections]
+
+    # ---------- HAUTEUR : un budget de lignes ----------
+    if deux_col:
+        h_haut = max(len(boites[0]), len(boites[1]))
+        h_bas = max(len(boites[2]), len(boites[3]))
+        h_boites, n_inter = h_haut + h_bas, 1
+    else:
+        h_haut = h_bas = 0
+        h_boites, n_inter = sum(len(b) for b in boites), 3
+    oblig = 1 + h_boites + 1                           # barre + encadrés + ligne de saisie
+    avec_logo = bool(LOGO_COLS) and W >= LOGO_COLS and LIG >= oblig + LOGO_ROWS
+    reste = LIG - oblig - (LOGO_ROWS if avec_logo else 0)
+
+    def prendre(n=1):
+        """Réserve n lignes facultatives s'il en reste ; sinon on s'en passe."""
+        nonlocal reste
+        if reste >= n:
+            reste -= n
+            return True
+        return False
+
+    # du plus utile au plus décoratif : on s'arrête quand la fenêtre est pleine
+    aide_on = prendre()                                # la ligne d'aide
+    inter = sum(1 for _ in range(n_inter) if prendre())    # vides entre les encadrés
+    esp_logo = 1 if (avec_logo and prendre()) else 0   # vide sous le logo
+    esp_aide = 1 if (aide_on and prendre()) else 0     # vide avant l'aide
+    esp_saisie = 1 if prendre() else 0                 # vide entre le menu et la saisie
+    esp_barre = 1 if prendre() else 0                  # vide sous la barre du haut
+    sig_on = avec_logo and deux_col and prendre(4)     # signature A♠ J♠ · 21 (3 + 1 vide)
+    esp_aide += 1 if (aide_on and prendre()) else 0    # encore un peu d'air avant l'aide
+
     lignes = []
 
     def at(r):
@@ -2139,49 +2206,73 @@ def _composer_menu(modele):
         for i, brow in enumerate(boite):
             row = at(rtop + i)
             for j, cell in enumerate(brow):
-                row[col + j] = list(cell)
+                if 0 <= col + j < W:                   # jamais hors de la grille
+                    row[col + j] = list(cell)
 
-    for r in range(_titre_haut + LOGO_ROWS):          # réserve la barre + la zone logo
-        at(r)
+    at(0)
     _poser_entete(lignes, W, modele)                  # barre épurée (état en ligne/hors-ligne)
     _poser_horloge(lignes, W)
-    for cr in range(LOGO_ROWS):                       # logo (teinte de base, cyclé par le thread)
-        row = at(_titre_haut + cr)
-        for x in range(LOGO_COLS):
-            row[ml + x] = ["▀", _txt(*LOGO[2 * cr][x]), _fond(*LOGO[2 * cr + 1][x])]
-    base_sig = _titre_haut + LOGO_ROWS + 1            # signature A♠ J♠ · 21
-    for r in range(base_sig, base_sig + 3):
-        at(r)
-    _poser_signature(lignes, W, base_sig)
-    r1 = base_sig + 4                                 # 1ère rangée de panneaux (menu central)
-    col_d = marge + LARGEUR_BOITE + gap               # colonne des encadrés de droite
-    poser(r1, marge, boites[0]); poser(r1, col_d, boites[1])
-    r2 = r1 + max(len(boites[0]), len(boites[1])) + 1
-    poser(r2, marge, boites[2]); poser(r2, col_d, boites[3])
-    rh = r2 + max(len(boites[2]), len(boites[3])) + 1
-
-    _cartes_actif = cartes_centre
-    if cartes_centre:                                 # couloir central : les deux as qui tournent
-        bas_boites = r2 + max(len(boites[2]), len(boites[3])) - 1
-        _cartes_cx = marge + LARGEUR_BOITE + gap // 2
-        _cartes_cy = (r1 + bas_boites) // 2
-        _cartes_x0 = marge + LARGEUR_BOITE + 1        # zone large (couvre toute l'étendue
-        _cartes_x1 = col_d - 1                        # des cartes, épaisseur comprise)
-        _cartes_r0 = max(_cartes_cy - _HAUT_CARTE // 2 - 1, r1)
-        _cartes_r1 = min(_cartes_cy + _HAUT_CARTE // 2 + 1, bas_boites)
-        for ry in range(_cartes_r0, _cartes_r1 + 1):  # réserve la zone (fond sombre, pas de pluie)
-            row = at(ry)
-            for cx in range(_cartes_x0, _cartes_x1 + 1):
-                if 0 <= cx < W:
-                    row[cx] = [" ", "", None]
-        _dessiner_cartes_centre(lignes, W, 0.0)       # pose les as au repos (face)
-
-    rh += 1
-    aide = "╾  tape un numéro · un message pour l'IA · « menu » · « exit »  ╼"
-    texte(rh, max((W - len(aide)) // 2, 0), aide, DISCRET)
-    bas = rh + 1
+    r = 1 + esp_barre
+    _logo_actif = avec_logo
+    ml = max((W - LOGO_COLS) // 2, 0)
+    if avec_logo:                                     # grand logo (teinte cyclée à l'affichage)
+        _titre_haut = r
+        for cr in range(LOGO_ROWS):
+            row = at(r + cr)
+            for x in range(LOGO_COLS):
+                row[ml + x] = ["▀", _txt(*LOGO[2 * cr][x]), _fond(*LOGO[2 * cr + 1][x])]
+        r += LOGO_ROWS + esp_logo
+        if sig_on:                                    # signature A♠ J♠ · 21
+            for rr in range(r, r + 3):
+                at(rr)
+            _poser_signature(lignes, W, r)
+            r += 4
+    r1 = r                                            # 1re ligne des encadrés
+    _cartes_actif = False
+    if deux_col:
+        marge = max((W - (2 * lb + gap)) // 2, 0)
+        col_d = marge + lb + gap                      # colonne des encadrés de droite
+        poser(r1, marge, boites[0]); poser(r1, col_d, boites[1])
+        r2 = r1 + h_haut + inter
+        poser(r2, marge, boites[2]); poser(r2, col_d, boites[3])
+        fin = r2 + h_bas                              # 1re ligne sous les encadrés
+        if cartes_centre and fin - r1 >= _HAUT_CARTE:  # couloir central : les deux as qui tournent
+            _cartes_actif = True
+            bas_boites = fin - 1
+            _cartes_cx = marge + lb + gap // 2
+            _cartes_cy = (r1 + bas_boites) // 2
+            _cartes_x0 = marge + lb + 1               # zone large (couvre toute l'étendue
+            _cartes_x1 = col_d - 1                    # des cartes, épaisseur comprise)
+            _cartes_r0 = max(_cartes_cy - _HAUT_CARTE // 2 - 1, r1)
+            _cartes_r1 = min(_cartes_cy + _HAUT_CARTE // 2 + 1, bas_boites)
+            for ry in range(_cartes_r0, _cartes_r1 + 1):  # zone réservée (fond sombre, pas de pluie)
+                row = at(ry)
+                for cx in range(_cartes_x0, _cartes_x1 + 1):
+                    if 0 <= cx < W:
+                        row[cx] = [" ", "", None]
+            _dessiner_cartes_centre(lignes, W, 0.0)   # pose les as au repos (face)
+    else:                                             # 1 colonne : encadrés empilés
+        marge = max((W - lb) // 2, 0)
+        fin = r1
+        for i, b in enumerate(boites):
+            poser(fin, marge, b)
+            fin += len(b)
+            if i < len(boites) - 1 and inter > 0:
+                fin += 1
+                inter -= 1
+    r = fin + esp_aide
+    if aide_on:                                       # la plus longue aide qui tient en largeur
+        for aide in ("╾  tape un numéro · un message pour l'IA · « menu » · « exit »  ╼",
+                     "tape un numéro · « menu » · « exit »",
+                     "numéro · « exit »"):
+            if len(aide) <= W - 2:
+                texte(r, max((W - len(aide)) // 2, 0), aide, DISCRET)
+                break
+        r += 1
+    bas = min(r, max(LIG - 1, 1))                     # JAMAIS plus haut que la fenêtre
     while len(lignes) < bas:
-        at(bas - 1)
+        at(len(lignes))
+    _ligne_saisie = min(bas + 1 + esp_saisie, LIG)    # ligne (1 = tout en haut) où l'on tape
     return lignes[:bas], bas, ml
 
 
@@ -2194,7 +2285,8 @@ def afficher_menu(modele):
     _modele_menu = modele
     _taille_menu = (taille.columns, taille.lines)
     _menu_offset = max((taille.columns - len(grille[0])) // 2, 0)   # centre le menu
-    _menu_reinit()                                 # le prochain repeint sera complet
+    _menu_reinit()
+    _ecran_alternatif(True)                        # le menu vit sur l'écran figé (plein écran)
     dec = " " * _menu_offset
     out = [BASE + "\x1b[2J\x1b[H"]
     for row in grille:
@@ -2226,6 +2318,8 @@ def _boot_console(modele):
     taille = _Taille()
     W = max(min(taille.columns - 1, 400), 24)
     H = max(min(taille.lines - 1, 120), 10)
+    max_txt = max(W - 20, 8)                          # un nom très long ne doit pas déborder
+    etapes = [(a[:max_txt], t) for a, t in etapes]
     larg = max(len(a) for a, _ in etapes) + 16
     gx = max((W - larg) // 2, 2)
     gy = max(H // 2 - len(etapes), 1)
@@ -2247,10 +2341,12 @@ def ecran_accueil(modele):
     Renvoie True si on entre dans le menu, False si l'utilisateur quitte (ÉCHAP)."""
     initialiser()
     if ANIMATIONS and sys.stdout.isatty():
-        if not _accueil_oeil(modele):      # ÉCHAP → on quitte proprement
-            return False
-        _boot_console(modele)              # déverrouillage → la console s'allume
-    afficher_menu(modele)
+        t = _Taille()
+        if t.columns >= 60 and t.lines >= 20:  # assez de place pour l'accueil animé
+            if not _accueil_oeil(modele):      # ÉCHAP → on quitte proprement
+                return False
+            _boot_console(modele)              # déverrouillage → la console s'allume
+    afficher_menu(modele)                      # (fenêtre minuscule : directement le menu)
     return True
 
 

@@ -615,7 +615,7 @@ def _boucle(historique, conf):
         if ui.sur_menu:                  # 1re sortie du menu → écran propre (style conversation)
             est_ia = saisie in ("1", "3") or RACCOURCIS.get(saisie, ("",))[0] == "prompt" \
                 or (RACCOURCIS.get(saisie) is None and saisie.lower() != "reset")
-            ui.debut_conversation("IA" if est_ia else "console")
+            ui.debut_conversation("IA" if est_ia else "console", defilement=True)   # écran qui défile : molette OK
         ui.sur_menu = False              # à partir d'ici l'écran défile
         if saisie.lower() == "reset":
             historique.clear()

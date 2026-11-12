@@ -363,6 +363,7 @@ def ecran_a_propos():
 
 
 def menu(conf):
+    ui.ecran_defilant()          # texte long : écran qui défile (molette utilisable)
     while True:
         ui.effacer()
         ui.info("\n  ⚙  COFFRE — chiffrer / déchiffrer tes fichiers\n", ui.CYAN)

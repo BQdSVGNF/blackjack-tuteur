@@ -318,7 +318,7 @@ def _ecran(v, croupier, cachee, mains, actif=None, message="", boutons=(), avis=
     pct = f"{100 * ok // n} %" if n else "—"
     L.append("  " + ui.DISCRET + f"Stratégie de base : {ok}/{n} ({pct})   ·   manches : {v['manches']}"
              + ui.BASE)
-    ui._ecrire("\x1b[H" + "".join(ui.BASE + l + "\x1b[K\n" for l in L) + "\x1b[J")
+    ui.dessiner(L)                       # redessin sur place, jamais plus haut que la fenêtre
 
 
 def _boutons(actions):
