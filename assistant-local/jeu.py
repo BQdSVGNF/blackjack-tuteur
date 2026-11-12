@@ -234,12 +234,15 @@ def _pad(s, w):
     return s + " " * max(w - ui._long_visible(s), 0)
 
 
-def _lignes_cartes(cartes, cacher_derniere=False):
+def _lignes_cartes(cartes, cacher_derniere=False, grand=False):
+    """Les cartes côte à côte : grandes (9×7) ou petites (7×5)."""
+    haut = 7 if grand else 5
     if not cartes:
-        return [""] * 5
-    arts = [ui.carte(r, s, cachee=(cacher_derniere and i == len(cartes) - 1))
+        return [""] * haut
+    fab = ui.grande_carte if grand else ui.carte
+    arts = [fab(r, s, cachee=(cacher_derniere and i == len(cartes) - 1))
             for i, (r, s) in enumerate(cartes)]
-    return [" ".join(a[i] for a in arts) for i in range(5)]
+    return [" ".join(a[i] for a in arts) for i in range(haut)]
 
 
 def _txt_total(cartes, cache=False):
@@ -255,70 +258,109 @@ def _txt_total(cartes, cache=False):
     return ui.BLANC + f"{t}" + (ui.DISCRET + " souple" if souple else "")
 
 
-def _bloc(etiquette, cartes, cacher_derniere=False, actif=False):
-    marque = ui.OR + ui.GRAS + "▶ " if actif else ui.DISCRET + "  "
-    lignes = [marque + etiquette + ui.BASE] + _lignes_cartes(cartes, cacher_derniere)
-    larg = max(ui._long_visible(l) for l in lignes)
-    return [_pad(l, larg) for l in lignes], larg
+def _bloc(etiquette, cartes, cacher_derniere=False, actif=False, grand=False):
+    """Une main : ses cartes puis, dessous, son étiquette — centrées l'une sur l'autre."""
+    cartes_l = _lignes_cartes(cartes, cacher_derniere, grand)
+    marque = ui.OR + ui.GRAS + "▶ " if actif else ""
+    etiq = marque + etiquette + ui.BASE
+    larg = max([ui._long_visible(l) for l in cartes_l] + [ui._long_visible(etiq), 1])
+    centre = lambda l: " " * ((larg - ui._long_visible(l)) // 2) + l
+    return [_pad(centre(l), larg) for l in cartes_l] + [_pad(centre(etiq), larg)], larg
 
 
 def _touche(lettre, libelle):
     return ui.OR + ui.GRAS + f"[{lettre}]" + ui.BASE + ui.TEXTE + f" {libelle}" + ui.BASE
 
 
+def _jetons(mise):
+    """Petite pile de jetons misés : ◉◉◉ 150."""
+    n = min(max(mise // 50, 1), 8)
+    return ui.accent_theme(True) + ui.GRAS + "◉" * n + ui.BASE + ui.BLANC + f" {mise}" + ui.BASE
+
+
 def _ecran(v, croupier, cachee, mains, actif=None, message="", boutons=(), avis="",
            montrer_compte=True, afficher_mise=True):
-    """Dessine toute la table. mains : liste de (cartes, mise)."""
-    W = max(min(ui.largeur(), 200), 40)
-    aere = ui._dim()[1] >= 30                         # fenêtre haute : on aère un peu
+    """Dessine toute la table, CENTRÉE, avec de grandes cartes si la fenêtre le permet
+    (sinon les petites). mains : liste de (cartes, mise)."""
+    W, Hf = ui._dim()
+    W = max(min(W - 1, 200), 40)
     jetons = v["jetons"]
     engage = sum(mise for _, mise in mains)
     droite = f"JETONS {jetons}" + (f"   MISE {engage}" if engage and afficher_mise else "") + "  "
-    L = [ui.ligne_entete("  ◢ BLACK JACK ◣   ·   TABLE", droite),
-         ui.DISCRET + "  " + "─" * min(W - 4, 100) + ui.BASE]
-    if aere:
-        L.append("")
+    entete = [ui.ligne_entete("  ◢ BLACK JACK ◣   ·   TABLE", droite),
+              ui.DISCRET + "  " + "─" * min(W - 4, 100) + ui.BASE]
 
-    # croupier
-    cache = cachee and len(croupier) >= 2
-    etiq = ui.TEXTE + ui.GRAS + "CROUPIER" + ui.BASE + "   " + _txt_total(croupier, cache=cache)
-    bloc, _ = _bloc(etiq, croupier, cacher_derniere=cache)
-    L += ["  " + l for l in bloc]
-    L += ["", "  " + message if message else "", ""]
+    def centrer(l):
+        return " " * max((W - ui._long_visible(l)) // 2, 0) + l
 
-    # joueur (une ou deux mains, côte à côte si la fenêtre le permet)
-    blocs = []
-    for i, (cartes, mise) in enumerate(mains):
-        nom = "TOI" if len(mains) == 1 else f"MAIN {i + 1}"
-        etiq = (ui.TEXTE + ui.GRAS + nom + ui.BASE + ui.DISCRET + f"  mise {mise}   " + ui.BASE
-                + _txt_total(cartes))
-        blocs.append(_bloc(etiq, cartes, actif=(actif == i)))
-    if not blocs:
-        blocs = [_bloc(ui.DISCRET + "  TOI", [])]
-    largeur_totale = sum(w for _, w in blocs) + 4 * (len(blocs) - 1)
-    if len(blocs) > 1 and largeur_totale + 2 > W:          # trop étroit : on empile
-        for lignes, _ in blocs:
-            L += ["  " + l for l in lignes]
-    else:
-        for i in range(6):
-            L.append("  " + "    ".join(b[0][i] for b in blocs))
-    if aere:
-        L.append("")
+    def composer(grand, air):
+        """Lignes de la table pour une taille de cartes et un espacement donnés."""
+        L = []
+        vide = [""] * air
+        cache = cachee and len(croupier) >= 2
+        etiq = ui.TEXTE + ui.GRAS + "CROUPIER" + ui.BASE + "  " + _txt_total(croupier, cache=cache)
+        bloc_c, _ = _bloc(etiq, croupier, cacher_derniere=cache, grand=grand)
+        L += [centrer(l) for l in bloc_c] + vide
+        # le bord du tapis, aux couleurs du thème
+        regle = " ♠  BLACKJACK PAIE 3:2  ·  LE CROUPIER RESTE SUR 17  ♠ "
+        lg = min(W - 6, 90)
+        if lg >= len(regle) + 6:
+            cote = (lg - len(regle)) // 2
+            L.append(centrer(ui.accent_theme() + "╶" + "─" * (cote - 1) + ui.accent_theme(True)
+                             + regle + ui.accent_theme() + "─" * (lg - cote - len(regle) - 1)
+                             + "╴" + ui.BASE))
+        else:
+            L.append(centrer(ui.accent_theme() + "─" * lg + ui.BASE))
+        L.append(centrer(message) if message else "")
+        L += vide
+        # les mains du joueur (côte à côte, empilées si trop large)
+        blocs = []
+        for i, (cartes, mise) in enumerate(mains):
+            nom = "TOI" if len(mains) == 1 else f"MAIN {i + 1}"
+            etiq = ui.TEXTE + ui.GRAS + nom + ui.BASE + "  " + _txt_total(cartes)
+            lignes, larg = _bloc(etiq, cartes, actif=(actif == i), grand=grand)
+            pile = _jetons(mise)
+            lignes = [_pad(" " * max((larg - ui._long_visible(pile)) // 2, 0) + pile, larg)] + lignes
+            blocs.append((lignes, larg))
+        if not blocs:
+            blocs = [_bloc(ui.DISCRET + "TOI" + ui.BASE, [], grand=grand)]
+        total = sum(w for _, w in blocs) + 6 * (len(blocs) - 1)
+        if len(blocs) > 1 and total + 2 > W:
+            for lignes, _ in blocs:
+                L += [centrer(l) for l in lignes]
+        else:
+            haut = max(len(b[0]) for b in blocs)
+            for i in range(haut):
+                L.append(centrer("      ".join(b[0][i] if i < len(b[0]) else " " * b[1]
+                                               for b in blocs)))
+        return L
 
     # pied : boutons, conseil, compte, stats
-    L.append("  " + "   ".join(_touche(k, lib) for k, lib in boutons) if boutons else "")
-    L.append("  " + avis if avis else "")
-    s = v["sabot"]
+    pied = ["", centrer("   ".join(_touche(k, lib) for k, lib in boutons)) if boutons else "",
+            centrer(avis) if avis else ""]
+    s_ = v["sabot"]
     if v["compte_on"] and montrer_compte:
-        L.append("  " + ui.CYAN + f"Hi-Lo  compte {s.compte:+d}  ·  vrai {s.vrai_compte():+.1f}"
-                 + ui.DISCRET + f"   ({s.restant()} cartes, {s.jeux_restants():.1f} jeux)" + ui.BASE)
+        pied.append(centrer(ui.CYAN + f"Hi-Lo  compte {s_.compte:+d}  ·  vrai {s_.vrai_compte():+.1f}"
+                            + ui.DISCRET + f"   ({s_.restant()} cartes, {s_.jeux_restants():.1f} jeux)"
+                            + ui.BASE))
     else:
-        L.append("  " + ui.DISCRET + "[K] compte Hi-Lo" + ui.BASE)
+        pied.append(centrer(ui.DISCRET + "[K] compte Hi-Lo" + ui.BASE))
     ok, n = v["ok"], v["n"]
     pct = f"{100 * ok // n} %" if n else "—"
-    L.append("  " + ui.DISCRET + f"Stratégie de base : {ok}/{n} ({pct})   ·   manches : {v['manches']}"
-             + ui.BASE)
-    ui.dessiner(L)                       # redessin sur place, jamais plus haut que la fenêtre
+    pied.append(centrer(ui.DISCRET + f"Stratégie de base : {ok}/{n} ({pct})   ·   manches : {v['manches']}"
+                        + ui.BASE))
+
+    dispo = Hf - 1 - len(entete) - len(pied) - 2     # -2 : ligne de saisie de la mise
+    corps = None
+    for grand, air in ((True, 1), (True, 0), (False, 1), (False, 0)):   # du plus beau au plus serré
+        essai = composer(grand, air)
+        if len(essai) <= dispo and max((ui._long_visible(l) for l in essai), default=0) <= W:
+            corps = essai
+            break
+    if corps is None:
+        corps = composer(False, 0)
+    marge_haut = max((dispo - len(corps)) // 2, 0)   # la table est centrée verticalement
+    ui.dessiner(entete + [""] * marge_haut + corps + pied)
 
 
 def _boutons(actions):

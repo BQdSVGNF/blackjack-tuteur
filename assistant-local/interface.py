@@ -243,6 +243,33 @@ def carte(valeur, enseigne, cachee=False):
     return [FOND_CARTE + couleur + GRAS + l + BASE for l in lignes]
 
 
+def accent_theme(clair=False):
+    """Couleur d'accent du thème (pour la table, les jetons, le dos des cartes)."""
+    tete, _, haut = THEMES[THEME]["pluie"]
+    return _txt(*(tete if clair else haut))
+
+
+def grande_carte(valeur, enseigne, cachee=False):
+    """Grande carte de 9 colonnes × 7 lignes (table de jeu). Dos aux couleurs du thème."""
+    if cachee:
+        _, bas_c, haut = THEMES[THEME]["pluie"]
+        fond = _fond(*(max(int(c * 0.55), 0) for c in haut))
+        motif = _txt(*(min(int(c * 1.15) + 25, 255) for c in haut))
+        lignes = ["┌───────┐", "│░▒░▒░▒░│", "│▒░▒░▒░▒│", "│░▒ ♠ ▒░│", "│▒░▒░▒░▒│",
+                  "│░▒░▒░▒░│", "└───────┘"]
+        return [fond + motif + l + BASE for l in lignes]
+    couleur = dict(ENSEIGNES)[enseigne]
+    v = valeur
+    lignes = ["┌───────┐",
+              f"│{v:<2}     │",
+              f"│{enseigne}      │",
+              f"│   {enseigne}   │",
+              f"│      {enseigne}│",
+              f"│     {v:>2}│",
+              "└───────┘"]
+    return [FOND_CARTE + couleur + GRAS + l + BASE for l in lignes]
+
+
 def _dessiner_main(posees, marge, mobile=None, ecart=1, redessiner=True):
     """Dessine les cartes posées, puis éventuellement une carte en mouvement à `ecart` espaces."""
     if redessiner:
