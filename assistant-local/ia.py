@@ -239,7 +239,9 @@ TURBO_URL = "https://openrouter.ai/api/v1/chat/completions"
 NOM_IA = "black-jack"                      # nom affiché dans l'interface
 # Modèles proposés dans les Paramètres (il faut les avoir téléchargés : ollama pull <nom>)
 MODELES_DISPO = ["qwen2.5-coder:7b", "deepseek-coder:6.7b",
-                 "qwen2.5:7b", "llama3.1:8b-instruct-q4_K_M"]
+                 "qwen2.5:7b", "llama3.1:8b-instruct-q4_K_M",
+                 "qwen2.5-coder:14b",      # ~9 Go : déborde un peu des 8 Go de VRAM
+                 "llama3.1:70b"]           # ~40 Go : il faut ~48 Go de RAM, très lent sur 8 Go de VRAM
 MAX_MESSAGES = 16  # reste dans les 8192 tokens de contexte
 NB_RESULTATS = 5
 NB_PAGES_LUES = 3
