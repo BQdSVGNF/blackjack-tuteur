@@ -470,9 +470,28 @@ def menu_principal():
                 _pause()
 
 
+_SLOGANS_CJ = [
+    "JE VOIS TOUT CE QUI ENCOMBRE TON PC.",
+    "RIEN NE M'ÉCHAPPE. PAS MÊME TES FICHIERS TEMPORAIRES.",
+    "TON DISQUE N'A PLUS DE SECRETS.",
+    "JE SURVEILLE CHAQUE OCTET.",
+]
+
+
+def _accueil():
+    """L'œil au lancement (comme dans Black Jack). ENTRÉE → menu, ÉCHAP → quitter."""
+    t = ui._Taille()
+    if not (ui.ANIMATIONS and sys.stdout.isatty() and t.columns >= 60 and t.lines >= 20):
+        return True                                  # pas d'animation possible : direct au menu
+    ui.TEXTE_ENTREE = "ouvrir ClearJack"
+    return ui._accueil_oeil("ClearJack", slogans=_SLOGANS_CJ)
+
+
 def main():
     ui.initialiser()
     try:
+        if not _accueil():                           # ÉCHAP sur l'œil → on quitte
+            return
         menu_principal()
     finally:
         ui.restaurer()

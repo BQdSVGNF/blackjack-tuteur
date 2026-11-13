@@ -1162,13 +1162,16 @@ def _poser_slogan(grille, W, H, texte):
     _poser_centre(grille, W, H, r_slogan, texte, _txt(212, 224, 238))   # argent clair
 
 
+TEXTE_ENTREE = "entrer dans la partie"   # ce que fait ENTRÉE sur l'œil (ClearJack le change)
+
+
 def _poser_invite(grille, W, H, allume=True):
     _, _, _, _, _, _, r_invite = _oeil_geo(W, H)
     ent = _txt(228, 234, 244) if allume else _txt(96, 104, 116)         # blanc argenté
     ech = _txt(208, 120, 120) if allume else _txt(112, 70, 72)          # seul accent : rose éteint
     gris = _txt(116, 126, 140)
     _poser_segments(grille, W, H, r_invite, [
-        ("[ENTRÉE]", ent), ("  entrer dans la partie        ", gris),
+        ("[ENTRÉE]", ent), (f"  {TEXTE_ENTREE:<22}        ", gris),
         ("[ÉCHAP]", ech), ("  quitter", gris),
     ])
 
@@ -1470,7 +1473,7 @@ class _GardeTaille:
         return self.kb.get()
 
 
-def _accueil_oeil(modele):
+def _accueil_oeil(modele, slogans=None):
     """Lève le rideau : l'œil géant s'ouvre → slogan →
     frisson (iris minuscule) → attente. ENTRÉE plonge dans la pupille (menu),
     ÉCHAP quitte. True = entrer, False = quitter."""
@@ -1478,7 +1481,7 @@ def _accueil_oeil(modele):
     _intro_offset = _intro_voffset = 0
     _reinit_cadre()                                  # premier cadre = plein écran
     W, H = _taille_oeil()
-    slogan = random.choice(_SLOGANS)
+    slogan = random.choice(slogans or _SLOGANS)
     _oeil_seed = random.randint(1, 10 ** 6)          # veines fixes pour ce lancement
     _cacher_curseur()
     try:
