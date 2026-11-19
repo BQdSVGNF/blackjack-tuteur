@@ -428,6 +428,257 @@ def performances():
 #  MENU PRINCIPAL
 # =====================================================================
 
+# =====================================================================
+#  8. OUTILS RECOMMANDÉS (logiciels gratuits et légaux, à installer soi-même)
+# =====================================================================
+# Chaque outil : nom, catégorie, description, site, identifiant winget (ou None),
+# chemins possibles de l'exécutable (sous Program Files / AppData / WinGet).
+# L'installation passe par winget, l'installeur officiel de Windows, et seulement
+# après confirmation. Si l'identifiant winget est inconnu, on ouvre le site.
+
+def _recherche(nom):
+    import urllib.parse
+    return "https://duckduckgo.com/?q=" + urllib.parse.quote(nom + " site officiel")
+
+
+OUTILS = [
+    # --- Nettoyage ---
+    ("BleachBit", "Nettoyage", "nettoyeur libre, montre ce qu'il va supprimer avant",
+     "https://www.bleachbit.org/", "BleachBit.BleachBit", [r"BleachBit\bleachbit.exe"]),
+    ("Wise Disk Cleaner", "Nettoyage", "nettoyeur simple avec planification (non libre)",
+     "https://www.wisecleaner.com/wise-disk-cleaner.html", None,
+     [r"Wise\Wise Disk Cleaner\WiseDiskCleaner.exe"]),
+    ("Glary Utilities", "Nettoyage", "boîte à outils complète ; refuse les options en plus à l'installation",
+     "https://www.glarysoft.com/", None, [r"Glary Utilities 5\Integrator.exe"]),
+    ("CleanSweep", "Nettoyage", "nettoyeur présenté comme open source", _recherche("CleanSweep nettoyage Windows"),
+     None, []),
+    ("FluentCleaner", "Nettoyage", "nettoyeur léger, axé vie privée", _recherche("FluentCleaner"), None, []),
+    # --- Analyse de l'espace disque ---
+    ("WinDirStat", "Espace disque", "carte colorée de ce qui prend la place (libre)",
+     "https://windirstat.net/", "WinDirStat.WinDirStat", [r"WinDirStat\WinDirStat.exe"]),
+    ("WizTree", "Espace disque", "le plus rapide sur les gros disques",
+     "https://diskanalyzer.com/", "AntibodySoftware.WizTree", [r"WizTree\WizTree64.exe", r"WizTree\WizTree.exe"]),
+    ("TreeSize Free", "Espace disque", "dossiers triés par taille, clic droit dans l'Explorateur",
+     "https://www.jam-software.com/treesize_free", "JAMSoftware.TreeSize.Free",
+     [r"JAM Software\TreeSize Free\TreeSizeFree.exe"]),
+    ("SpaceSniffer", "Espace disque", "visualisation graphique, portable",
+     "http://www.uderzo.it/main_products/space_sniffer/", None, []),
+    ("JDiskReport", "Espace disque", "graphiques de l'occupation (nécessite Java)",
+     "https://www.jgoodies.com/freeware/jdiskreport/", None, []),
+    # --- Surveillance des composants ---
+    ("HWiNFO", "Composants", "TOUTES les températures, fréquences, tensions (lecture seule)",
+     "https://www.hwinfo.com/", "REALiX.HWiNFO", [r"HWiNFO64\HWiNFO64.exe", r"HWiNFO\HWiNFO64.exe"]),
+    ("MSI Afterburner", "Composants", "suivi en jeu ; ses réglages d'overclocking = prudence",
+     "https://www.msi.com/Landing/afterburner/graphics-cards", "Guru3D.Afterburner",
+     [r"MSI Afterburner\MSIAfterburner.exe"]),
+    ("AMD Ryzen Master", "Composants", "outil officiel AMD (processeurs Ryzen uniquement)",
+     "https://www.amd.com/en/products/software/ryzen-master.html", None,
+     [r"AMD\RyzenMaster\bin\AMD Ryzen Master.exe"]),
+    ("Intel XTU", "Composants", "outil officiel Intel (processeurs Intel uniquement)",
+     "https://www.intel.com/content/www/us/en/download/17881/intel-extreme-tuning-utility-intel-xtu.html",
+     None, [r"Intel\Intel(R) Extreme Tuning Utility\Client\XtuUiLauncher.exe"]),
+    # --- Santé du disque et de la mémoire ---
+    ("CrystalDiskInfo", "Santé matériel", "état de santé du disque/SSD (bleu = OK, rouge = danger)",
+     "https://crystalmark.info/en/software/crystaldiskinfo/", "CrystalDewWorld.CrystalDiskInfo",
+     [r"CrystalDiskInfo\DiskInfo64.exe", r"CrystalDiskInfo\DiskInfo32.exe"]),
+    ("Diagnostic mémoire Windows", "Santé matériel", "test de la RAM intégré à Windows (redémarre le PC)",
+     "builtin:mdsched", None, []),
+    ("MemTest86", "Santé matériel", "test de RAM approfondi sur clé USB",
+     "https://www.memtest86.com/", None, []),
+    ("MemTest64", "Santé matériel", "test de RAM sous Windows (TechPowerUp)",
+     "https://www.techpowerup.com/download/memtest64/", None, []),
+    # --- Système (Microsoft Sysinternals) ---
+    ("Autoruns", "Système", "TOUT ce qui démarre avec Windows (Microsoft)",
+     "https://learn.microsoft.com/sysinternals/downloads/autoruns", "Microsoft.Sysinternals.Autoruns",
+     ["@autoruns64", "@autoruns"]),
+    ("Process Explorer", "Système", "gestionnaire des tâches avancé (Microsoft)",
+     "https://learn.microsoft.com/sysinternals/downloads/process-explorer",
+     "Microsoft.Sysinternals.ProcessExplorer", ["@procexp64", "@procexp"]),
+    ("Suite Sysinternals", "Système", "tous les outils Sysinternals d'un coup (Microsoft)",
+     "https://learn.microsoft.com/sysinternals/downloads/sysinternals-suite", None, []),
+    ("HiBit Startup Manager", "Système", "gestionnaire de démarrage simple", _recherche("HiBit Startup Manager"),
+     None, []),
+    ("Autorun Organizer", "Système", "gestionnaire de démarrage simple",
+     "https://www.chemtable.com/autorun-organizer.htm", None, []),
+    # --- Sécurité ---
+    ("AdwCleaner", "Sécurité", "retire les logiciels indésirables (Malwarebytes)",
+     "https://www.malwarebytes.com/adwcleaner", None, []),
+]
+
+A_EVITER = [
+    ("CCleaner", "En 2017, une version piratée a infecté ~2,27 millions de PC. Les versions officielles "
+                 "suivantes sont saines, mais Windows fait déjà l'essentiel. Si tu l'utilises : site officiel."),
+    ("Nettoyeurs de registre", "Gain quasi nul, risque de casser Windows."),
+    ("Optimiseurs « tout-en-un » miracles", "Promettent beaucoup, installent souvent des logiciels en plus."),
+    ("Débridage de carte graphique", "Risque de griller la carte et perte de garantie."),
+]
+
+
+def _trouver_exe(chemins):
+    """Chemin de l'exécutable s'il est installé, sinon None."""
+    for c in chemins:
+        if c.startswith("@"):
+            p = shutil.which(c[1:])
+            if p:
+                return p
+            continue
+        for base in (os.environ.get("ProgramFiles"), os.environ.get("ProgramFiles(x86)"),
+                     os.path.join(os.environ.get("LOCALAPPDATA", ""), "Programs")):
+            if base and os.path.isfile(os.path.join(base, c)):
+                return os.path.join(base, c)
+    return None
+
+
+def _winget_ok():
+    return bool(WINDOWS and shutil.which("winget"))
+
+
+def _ouvrir_site(url):
+    import webbrowser
+    try:
+        webbrowser.open(url)
+        _ecrire("  " + C_OK + "Site ouvert dans ton navigateur ✓")
+    except Exception as e:
+        _ecrire("  " + C_DANGER + f"Impossible d'ouvrir le navigateur : {e}")
+        _ecrire("  " + C_TEXTE + url)
+
+
+def _fiche_outil(outil):
+    nom, cat, desc, url, wid, chemins = outil
+    while True:
+        _entete(f"OUTIL · {nom}")
+        _ecrire(f"  {C_DISCRET}Catégorie : {C_TEXTE}{cat}")
+        _ecrire(f"  {C_DISCRET}À quoi ça sert : {C_TEXTE}{desc}")
+        integre = url.startswith("builtin:")
+        exe = None if integre else _trouver_exe(chemins)
+        if integre:
+            _ecrire(f"  {C_DISCRET}État : {C_OK}intégré à Windows")
+        elif exe:
+            _ecrire(f"  {C_DISCRET}État : {C_OK}installé ✓  {C_DISCRET}({exe})")
+        else:
+            _ecrire(f"  {C_DISCRET}État : {C_TEXTE}pas installé (ou installé ailleurs)")
+        if not integre:
+            _ecrire(f"  {C_DISCRET}Site : {C_TEXTE}{url}")
+        _ecrire()
+        choix = []
+        if integre or exe:
+            choix.append(("L", "Lancer"))
+        if wid and not exe:
+            choix.append(("I", "Installer avec winget (installeur officiel de Windows)"))
+        if not integre:
+            choix.append(("S", "Ouvrir le site officiel"))
+        choix.append(("0", "Retour"))
+        for k, lib in choix:
+            _ecrire(f"   {C_NUM}{ui.GRAS}[{k}]{ui.BASE} {C_TEXTE}{lib}")
+        c = _demander("Ton choix").lower()
+        if c in ("0", "", "q"):
+            return
+        if c == "s" and not integre:
+            _ouvrir_site(url)
+            _pause()
+        elif c == "l" and integre:
+            if _windows_seulement():
+                continue
+            _ecrire("  " + C_ALERTE + "Windows va proposer de REDÉMARRER pour tester la mémoire.")
+            if _confirmer("Ouvrir le diagnostic de mémoire Windows ?"):
+                try:
+                    subprocess.Popen(["mdsched.exe"])
+                    _ecrire("  " + C_OK + "Ouvert ✓")
+                except Exception as e:
+                    _ecrire("  " + C_DANGER + f"Impossible : {e}")
+                _pause()
+        elif c == "l" and exe:
+            try:
+                os.startfile(exe)
+                _ecrire("  " + C_OK + f"{nom} lancé ✓")
+            except Exception as e:
+                _ecrire("  " + C_DANGER + f"Impossible de le lancer : {e}")
+            _pause()
+        elif c == "i" and wid and not exe:
+            if not _winget_ok():
+                _ecrire("  " + C_ALERTE + "winget n'est pas disponible ici. Installe-le depuis le site officiel ([S]).")
+                _pause()
+                continue
+            _ecrire("  " + C_TEXTE + f"Commande : {C_NUM}winget install --id {wid} --exact")
+            if _confirmer(f"Installer {nom} ?"):
+                _ecrire("  " + C_DISCRET + "Installation… (Windows peut demander une autorisation)")
+                try:
+                    r = subprocess.run(["winget", "install", "--id", wid, "--exact",
+                                        "--accept-package-agreements", "--accept-source-agreements"])
+                    _ecrire("  " + (C_OK + "Installé ✓" if r.returncode == 0
+                                    else C_ALERTE + f"winget a renvoyé le code {r.returncode}."))
+                except Exception as e:
+                    _ecrire("  " + C_DANGER + f"Échec : {e}")
+                _pause()
+
+
+_CATEGORIES = [("Nettoyage", "fichiers inutiles"),
+               ("Espace disque", "voir ce qui prend la place"),
+               ("Composants", "températures, fréquences"),
+               ("Santé matériel", "état du disque et de la mémoire"),
+               ("Système", "démarrage, processus"),
+               ("Sécurité", "logiciels indésirables")]
+
+
+def _etat_outil(outil):
+    url, chemins = outil[3], outil[5]
+    if url.startswith("builtin:"):
+        return C_OK + "intégré"
+    if WINDOWS and _trouver_exe(chemins):
+        return C_OK + "installé ✓"
+    return ""
+
+
+def _liste_categorie(cat):
+    while True:
+        _entete(f"OUTILS · {cat.upper()}")
+        dans = [o for o in OUTILS if o[1] == cat]
+        larg_desc = max(_largeur() - 46, 20)
+        for i, o in enumerate(dans, 1):
+            _ecrire(f"   {C_NUM}{ui.GRAS}{i:>2}{ui.BASE}  {C_TEXTE}{o[0]:<26}{C_DISCRET}{o[2][:larg_desc]}")
+            etat = _etat_outil(o)
+            if etat:
+                _ecrire(f"       {etat}")
+        _ecrire()
+        c = _demander("Numéro de l'outil · 0 retour")
+        if c in ("0", "", "q"):
+            return
+        if c.isdigit() and 1 <= int(c) <= len(dans):
+            _fiche_outil(dans[int(c) - 1])
+
+
+def _ecran_a_eviter():
+    import textwrap
+    _entete("À ÉVITER · et pourquoi")
+    larg = max(_largeur() - 8, 30)
+    for nom, pourquoi in A_EVITER:
+        _ecrire(f"  {C_DANGER}{ui.GRAS}✗ {nom}")
+        for l in textwrap.wrap(pourquoi, larg):
+            _ecrire(f"    {C_TEXTE}{l}")
+        _ecrire()
+    _pause()
+
+
+def outils_recommandes():
+    while True:
+        _entete("OUTILS RECOMMANDÉS · gratuits et légaux")
+        items = []
+        for i, (cat, desc) in enumerate(_CATEGORIES, 1):
+            n = sum(1 for o in OUTILS if o[1] == cat)
+            items.append((str(i), f"{cat} ({n})", desc))
+        items.append(("7", "À éviter", "et pourquoi"))
+        items.append(("0", "Retour", ""))
+        _menu_items(items)
+        _ecrire(_centrer(C_DISCRET + "Rien n'est installé sans ta confirmation.", 40))
+        c = _demander("Ton choix")
+        if c in ("0", "", "q"):
+            return
+        if c.isdigit() and 1 <= int(c) <= len(_CATEGORIES):
+            _liste_categorie(_CATEGORIES[int(c) - 1][0])
+        elif c == "7":
+            _ecran_a_eviter()
+
+
 def _menu_items(items):
     """Un cadre arrondi centré : numéro · titre · description (coupée si trop longue)."""
     larg = min(70, _largeur() - 4)
@@ -454,12 +705,13 @@ def menu_principal():
                      ("5", "Mode performances", "plan d'alimentation"),
                      ("6", "Programmes au démarrage", "démarrer Windows plus vite"),
                      ("7", "Coffre", "chiffrer tes fichiers"),
+                     ("8", "Outils recommandés", "les meilleurs logiciels gratuits"),
                      ("0", "Quitter", "")])
         c = _demander("Ton choix")
         if c in ("0", "q", "exit", "quitter"):
             return
         actions = {"1": diagnostic, "2": menu_nettoyage, "3": booster, "4": materiel,
-                   "5": performances, "6": opt.ecran_demarrage, "7": lambda: coffre.menu({})}
+                   "5": performances, "6": opt.ecran_demarrage, "8": outils_recommandes, "7": lambda: coffre.menu({})}
         if c in actions:
             try:
                 actions[c]()
